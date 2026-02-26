@@ -14,6 +14,7 @@ type ErgebnissePageProps = {
     businessReviews?: string | string[];
     businessPhone?: string | string[];
     businessUrl?: string | string[];
+    selectedReportKey?: string | string[];
   }>;
 };
 
@@ -24,6 +25,8 @@ export default async function ErgebnissePage({
   const location =
     typeof params.location === "string" ? params.location.trim() : "";
   const keyword = typeof params.keyword === "string" ? params.keyword.trim() : "";
+  const selectedReportKey =
+    typeof params.selectedReportKey === "string" ? params.selectedReportKey.trim() : "";
   const placeId = typeof params.placeId === "string" ? params.placeId.trim() : "";
   const lat = typeof params.lat === "string" ? Number.parseFloat(params.lat) : Number.NaN;
   const lng = typeof params.lng === "string" ? Number.parseFloat(params.lng) : Number.NaN;
@@ -61,6 +64,7 @@ export default async function ErgebnissePage({
       location={location}
       keyword={keyword}
       selectedLocation={selectedLocation}
+      selectedReportKey={selectedReportKey || null}
     />
   );
 }

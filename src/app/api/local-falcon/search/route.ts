@@ -4,8 +4,28 @@ export const dynamic = "force-dynamic";
 
 const LOCAL_FALCON_BASE_URL = "https://api.localfalcon.com";
 const DEFAULT_PLATFORM = "google";
-const SEARCH_TIMEOUT_MS = 45_000;
-const MAX_RESULTS = 8;
+const SEARCH_TIMEOUT_MS = Number.isFinite(Number(process.env.LOCAL_FALCON_SEARCH_TIMEOUT_MS))
+  ? Math.max(10_000, Number(process.env.LOCAL_FALCON_SEARCH_TIMEOUT_MS))
+  : 60_000;
+const SEARCH_QUERY_TIMEOUT_MS = Number.isFinite(
+  Number(process.env.LOCAL_FALCON_SEARCH_QUERY_TIMEOUT_MS),
+)
+  ? Math.max(3_000, Number(process.env.LOCAL_FALCON_SEARCH_QUERY_TIMEOUT_MS))
+  : 12_000;
+const SEARCH_BATCH_CONCURRENCY = 2;
+const MAX_RESULTS = Number.isFinite(Number(process.env.LOCAL_FALCON_SEARCH_MAX_RESULTS))
+  ? Math.min(100, Math.max(8, Number(process.env.LOCAL_FALCON_SEARCH_MAX_RESULTS)))
+  : 32;
+const SEARCH_TARGET_RESULTS = Number.isFinite(Number(process.env.LOCAL_FALCON_SEARCH_TARGET_RESULTS))
+  ? Math.min(MAX_RESULTS, Math.max(8, Number(process.env.LOCAL_FALCON_SEARCH_TARGET_RESULTS)))
+  : 16;
+const SEARCH_SOFT_TIMEOUT_MS = Number.isFinite(Number(process.env.LOCAL_FALCON_SEARCH_SOFT_TIMEOUT_MS))
+  ? Math.max(8_000, Number(process.env.LOCAL_FALCON_SEARCH_SOFT_TIMEOUT_MS))
+  : 20_000;
+const ENABLE_LOCAL_FALCON_DEBUG =
+  process.env.LOCAL_FALCON_DEBUG_LOGS === "true" ||
+  process.env.LOCAL_FALCON_DEBUG_LOGS === "1" ||
+  process.env.NODE_ENV !== "production";
 
 type LocalFalconEnvelope<T> = {
   code: number;
@@ -104,6 +124,45 @@ function parsePayload(payload: unknown): SearchPayload | null {
   return { query, keyword: keyword || undefined };
 }
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === "AbortError";
+  }
+
+  return error instanceof Error && error.message.toLowerCase().includes("aborted");
+}
+
+function isFatalSearchError(error: unknown): boolean {
+  return error instanceof RouteError && (error.status === 401 || error.status === 403);
+}
+
+function maskApiKey(apiKey: string): string {
+  if (apiKey.length <= 8) {
+    return "***";
+  }
+
+  return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+}
+
+function sanitizeLogBody(body: Record<string, string>) {
+  if (!("api_key" in body)) {
+    return body;
+  }
+
+  return {
+    ...body,
+    api_key: maskApiKey(body.api_key),
+  };
+}
+
+function debugLog(message: string, payload: unknown) {
+  if (!ENABLE_LOCAL_FALCON_DEBUG) {
+    return;
+  }
+
+  console.log(`[local-falcon/search] ${message}`, payload);
+}
+
 function buildFormBody(entries: Record<string, string>): URLSearchParams {
   const form = new URLSearchParams();
 
@@ -142,6 +201,9 @@ function buildLocationSearchQueries(location: string): LocationSearchQuery[] {
     });
   };
 
+  // Fast path first: full user query before heuristic splits.
+  pushQuery(trimmedLocation);
+
   if (trimmedLocation.includes(",")) {
     const [name, ...rest] = trimmedLocation
       .split(",")
@@ -173,9 +235,20 @@ function buildLocationSearchQueries(location: string): LocationSearchQuery[] {
     pushQuery(words.slice(0, -1).join(" "), words[words.length - 1]);
   }
 
-  pushQuery(trimmedLocation);
-
   return queries;
+}
+
+function buildSearchQueryGroups(payload: SearchPayload): LocationSearchQuery[][] {
+  if (!payload.keyword) {
+    return [buildLocationSearchQueries(payload.query)];
+  }
+
+  return [
+    buildLocationSearchQueries(`${payload.keyword} ${payload.query}`),
+    buildLocationSearchQueries(`${payload.query} ${payload.keyword}`),
+    buildLocationSearchQueries(`${payload.keyword} in ${payload.query}`),
+    buildLocationSearchQueries(payload.query),
+  ];
 }
 
 async function postLocalFalcon<T>(
@@ -183,6 +256,12 @@ async function postLocalFalcon<T>(
   body: Record<string, string>,
   signal: AbortSignal,
 ): Promise<LocalFalconEnvelope<T>> {
+  const startedAt = Date.now();
+  debugLog("upstream request", {
+    endpoint,
+    body: sanitizeLogBody(body),
+  });
+
   const response = await fetch(`${LOCAL_FALCON_BASE_URL}${endpoint}`, {
     method: "POST",
     headers: {
@@ -191,6 +270,12 @@ async function postLocalFalcon<T>(
     body: buildFormBody(body),
     cache: "no-store",
     signal,
+  });
+
+  debugLog("upstream response", {
+    endpoint,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
   });
 
   const parsed = (await response.json().catch(() => null)) as LocalFalconEnvelope<T> | null;
@@ -223,6 +308,11 @@ async function searchLocations(
   query: LocationSearchQuery,
   signal: AbortSignal,
 ): Promise<AccountLocationSearchResult[]> {
+  const querySignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(SEARCH_QUERY_TIMEOUT_MS),
+  ]);
+
   const response = await postLocalFalcon<AccountLocationSearchData>(
     "/v2/locations/search",
     {
@@ -231,7 +321,7 @@ async function searchLocations(
       proximity: query.proximity ?? "",
       platform: DEFAULT_PLATFORM,
     },
-    signal,
+    querySignal,
   );
 
   return Array.isArray(response.data?.results) ? response.data.results : [];
@@ -260,33 +350,81 @@ function mapSearchResult(result: AccountLocationSearchResult): SearchResponseIte
   };
 }
 
+type SearchCollectResult = {
+  hadSuccessfulQuery: boolean;
+  recoverableError: unknown | null;
+};
+
 async function collectSearchMatches(
   apiKey: string,
   queries: LocationSearchQuery[],
   signal: AbortSignal,
   combined: Map<string, SearchResponseItem>,
-) {
-  for (const query of queries) {
-    const results = await searchLocations(apiKey, query, signal);
+  stopWhenSizeAtLeast: number,
+): Promise<SearchCollectResult> {
+  let hadSuccessfulQuery = false;
+  let lastRecoverableError: unknown = null;
 
-    for (const result of results) {
-      const mapped = mapSearchResult(result);
+  for (let index = 0; index < queries.length; index += SEARCH_BATCH_CONCURRENCY) {
+    const batch = queries.slice(index, index + SEARCH_BATCH_CONCURRENCY);
+    const settled = await Promise.all(
+      batch.map(async (query) => {
+        try {
+          const results = await searchLocations(apiKey, query, signal);
+          return { results };
+        } catch (error) {
+          return { error };
+        }
+      }),
+    );
 
-      if (!mapped || combined.has(mapped.placeId)) {
+    for (const entry of settled) {
+      if ("error" in entry) {
+        if (signal.aborted && isAbortError(entry.error)) {
+          throw entry.error;
+        }
+
+        if (isFatalSearchError(entry.error)) {
+          throw entry.error;
+        }
+
+        lastRecoverableError = entry.error;
         continue;
       }
 
-      combined.set(mapped.placeId, mapped);
+      hadSuccessfulQuery = true;
 
-      if (combined.size >= MAX_RESULTS) {
-        return;
-      }
+      for (const result of entry.results) {
+        const mapped = mapSearchResult(result);
+
+        if (!mapped || combined.has(mapped.placeId)) {
+          continue;
+        }
+
+        combined.set(mapped.placeId, mapped);
+
+        if (combined.size >= MAX_RESULTS || combined.size >= stopWhenSizeAtLeast) {
+          return {
+            hadSuccessfulQuery,
+            recoverableError: lastRecoverableError,
+          };
+        }
     }
 
-    if (combined.size > 0) {
-      return;
+    if (combined.size >= MAX_RESULTS || combined.size >= stopWhenSizeAtLeast) {
+      return {
+        hadSuccessfulQuery,
+        recoverableError: lastRecoverableError,
+      };
     }
   }
+
+  }
+
+  return {
+    hadSuccessfulQuery,
+    recoverableError: lastRecoverableError,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -314,28 +452,59 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  debugLog("incoming request", {
+    query: parsedBody.query,
+    keyword: parsedBody.keyword ?? null,
+  });
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
 
   try {
     const combined = new Map<string, SearchResponseItem>();
-    const primaryQueries = buildLocationSearchQueries(parsedBody.query);
+    let hadAnySuccessfulQuery = false;
+    let lastRecoverableError: unknown = null;
+    const queryGroups = buildSearchQueryGroups(parsedBody);
+    const searchStartedAt = Date.now();
+    let softTimeoutTriggered = false;
 
-    await collectSearchMatches(apiKey, primaryQueries, controller.signal, combined);
+    for (const queries of queryGroups) {
+      if (combined.size >= MAX_RESULTS || combined.size >= SEARCH_TARGET_RESULTS) {
+        break;
+      }
 
-    if (combined.size === 0 && parsedBody.keyword) {
-      const keywordFirstFallback = buildLocationSearchQueries(
-        `${parsedBody.keyword} ${parsedBody.query}`,
+      if (combined.size > 0 && Date.now() - searchStartedAt >= SEARCH_SOFT_TIMEOUT_MS) {
+        softTimeoutTriggered = true;
+        break;
+      }
+
+      const collectResult = await collectSearchMatches(
+        apiKey,
+        queries,
+        controller.signal,
+        combined,
+        SEARCH_TARGET_RESULTS,
       );
-      await collectSearchMatches(apiKey, keywordFirstFallback, controller.signal, combined);
+
+      hadAnySuccessfulQuery ||= collectResult.hadSuccessfulQuery;
+      if (collectResult.recoverableError) {
+        lastRecoverableError = collectResult.recoverableError;
+      }
     }
 
-    if (combined.size === 0 && parsedBody.keyword) {
-      const queryFirstFallback = buildLocationSearchQueries(
-        `${parsedBody.query} ${parsedBody.keyword}`,
-      );
-      await collectSearchMatches(apiKey, queryFirstFallback, controller.signal, combined);
+    if (combined.size === 0 && !hadAnySuccessfulQuery && lastRecoverableError) {
+      throw lastRecoverableError;
     }
+
+    debugLog("response ready", {
+      query: parsedBody.query,
+      keyword: parsedBody.keyword ?? null,
+      resultsCount: combined.size,
+      hadAnySuccessfulQuery,
+      elapsedMs: Date.now() - searchStartedAt,
+      targetResults: SEARCH_TARGET_RESULTS,
+      softTimeoutTriggered,
+    });
 
     return NextResponse.json({
       success: true,
@@ -343,16 +512,25 @@ export async function POST(request: NextRequest) {
       results: Array.from(combined.values()).slice(0, MAX_RESULTS),
     });
   } catch (error) {
-    const isAbortError =
-      error instanceof DOMException
-        ? error.name === "AbortError"
-        : error instanceof Error && error.message.toLowerCase().includes("aborted");
+    const isRequestAborted = isAbortError(error);
 
-    const message = isAbortError
+    const message = isRequestAborted
       ? "Die Standortsuche dauert laenger als erwartet. Bitte erneut versuchen."
       : error instanceof Error
         ? error.message
         : "Standorte konnten nicht geladen werden.";
+    const status = isRequestAborted
+      ? 504
+      : error instanceof RouteError
+        ? error.status
+        : 500;
+
+    debugLog("response error", {
+      query: parsedBody.query,
+      keyword: parsedBody.keyword ?? null,
+      status,
+      message,
+    });
 
     return NextResponse.json(
       {
@@ -360,7 +538,7 @@ export async function POST(request: NextRequest) {
         message,
       },
       {
-        status: error instanceof RouteError ? error.status : 500,
+        status,
       },
     );
   } finally {

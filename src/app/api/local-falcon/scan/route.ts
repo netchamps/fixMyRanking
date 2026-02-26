@@ -12,7 +12,12 @@ const ON_DEMAND_MEASUREMENT = process.env.LOCAL_FALCON_MEASUREMENT?.trim() || "k
 const LOCAL_FALCON_TIMEOUT_MS = Number.isFinite(Number(process.env.LOCAL_FALCON_TIMEOUT_MS))
   ? Math.max(30_000, Number(process.env.LOCAL_FALCON_TIMEOUT_MS))
   : 300_000;
-const REPORT_LIST_FIELDS = [
+const COMPLETED_ON_DEMAND_SCAN_TTL_MS = 10 * 60 * 1000;
+const ENABLE_LOCAL_FALCON_DEBUG =
+  process.env.LOCAL_FALCON_DEBUG_LOGS === "true" ||
+  process.env.LOCAL_FALCON_DEBUG_LOGS === "1" ||
+  process.env.NODE_ENV !== "production";
+const REPORT_LIST_SELECTION_FIELDS = [
   "reports.*.report_key",
   "reports.*.timestamp",
   "reports.*.date",
@@ -21,19 +26,6 @@ const REPORT_LIST_FIELDS = [
   "reports.*.location.place_id",
   "reports.*.location.name",
   "reports.*.location.address",
-  "reports.*.location.rating",
-  "reports.*.location.reviews",
-  "reports.*.location.phone",
-  "reports.*.location.url",
-  "reports.*.data_points",
-  "reports.*.found_in",
-  "reports.*.arp",
-  "reports.*.atrp",
-  "reports.*.solv",
-  "reports.*.image",
-  "reports.*.heatmap",
-  "reports.*.pdf",
-  "reports.*.public_url",
 ].join(",");
 const REPORT_DETAIL_FIELDS = [
   "report_key",
@@ -74,6 +66,7 @@ type AnalysisPayload = {
   location: string;
   keyword: string;
   selectedReportKey?: string;
+  forceRunScan?: boolean;
   selectedLocation?: {
     placeId: string;
     name: string;
@@ -222,6 +215,41 @@ class RouteError extends Error {
   }
 }
 
+type OnDemandScanResponse = Awaited<ReturnType<typeof runOnDemandScan>>;
+type CompletedOnDemandScanEntry = {
+  storedAt: number;
+  data: OnDemandScanResponse;
+};
+const inFlightOnDemandScans = new Map<string, Promise<OnDemandScanResponse>>();
+const completedOnDemandScans = new Map<string, CompletedOnDemandScanEntry>();
+
+function maskApiKey(apiKey: string): string {
+  if (apiKey.length <= 8) {
+    return "***";
+  }
+
+  return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+}
+
+function sanitizeLogBody(body: Record<string, string>) {
+  if (!("api_key" in body)) {
+    return body;
+  }
+
+  return {
+    ...body,
+    api_key: maskApiKey(body.api_key),
+  };
+}
+
+function debugLog(message: string, payload: unknown) {
+  if (!ENABLE_LOCAL_FALCON_DEBUG) {
+    return;
+  }
+
+  console.log(`[local-falcon/scan] ${message}`, payload);
+}
+
 function toNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -248,6 +276,7 @@ function parsePayload(payload: unknown): AnalysisPayload | null {
   const keyword = typeof payload.keyword === "string" ? payload.keyword.trim() : "";
   const selectedReportKey =
     typeof payload.selectedReportKey === "string" ? payload.selectedReportKey.trim() : "";
+  const forceRunScan = payload.forceRunScan === true;
   const rawSelectedLocation = isRecord(payload.selectedLocation)
     ? payload.selectedLocation
     : null;
@@ -297,6 +326,7 @@ function parsePayload(payload: unknown): AnalysisPayload | null {
     location,
     keyword,
     selectedReportKey: selectedReportKey || undefined,
+    forceRunScan,
     selectedLocation,
   };
 }
@@ -319,6 +349,71 @@ function normalizeText(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function buildOnDemandScanCacheKey(payload: AnalysisPayload): string {
+  const locationPart = normalizeText(payload.location);
+  const keywordPart = normalizeText(payload.keyword);
+  const placeIdPart = payload.selectedLocation?.placeId?.trim() || "none";
+
+  return `${locationPart}|${keywordPart}|${placeIdPart}`;
+}
+
+function readCompletedOnDemandScan(cacheKey: string): OnDemandScanResponse | null {
+  const cached = completedOnDemandScans.get(cacheKey);
+
+  if (!cached) {
+    return null;
+  }
+
+  if (Date.now() - cached.storedAt > COMPLETED_ON_DEMAND_SCAN_TTL_MS) {
+    completedOnDemandScans.delete(cacheKey);
+    return null;
+  }
+
+  return cached.data;
+}
+
+function writeCompletedOnDemandScan(cacheKey: string, payload: OnDemandScanResponse) {
+  completedOnDemandScans.set(cacheKey, {
+    storedAt: Date.now(),
+    data: payload,
+  });
+}
+
+async function runOrJoinOnDemandScan(
+  apiKey: string,
+  payload: AnalysisPayload,
+  signal: AbortSignal,
+): Promise<OnDemandScanResponse> {
+  const cacheKey = buildOnDemandScanCacheKey(payload);
+  const cached = readCompletedOnDemandScan(cacheKey);
+
+  if (cached) {
+    return cached;
+  }
+
+  const inFlight = inFlightOnDemandScans.get(cacheKey);
+
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const task = (async () => {
+    const result = await runOnDemandScan(apiKey, payload, signal);
+    writeCompletedOnDemandScan(cacheKey, result);
+    return result;
+  })();
+
+  inFlightOnDemandScans.set(cacheKey, task);
+
+  try {
+    return await task;
+  } finally {
+    if (inFlightOnDemandScans.get(cacheKey) === task) {
+      inFlightOnDemandScans.delete(cacheKey);
+    }
+  }
 }
 
 function scoreTextMatch(haystack: string, needle: string): number {
@@ -376,6 +471,12 @@ async function postLocalFalcon<T>(
   body: Record<string, string>,
   signal: AbortSignal,
 ): Promise<LocalFalconEnvelope<T>> {
+  const startedAt = Date.now();
+  debugLog("upstream request", {
+    endpoint,
+    body: sanitizeLogBody(body),
+  });
+
   const response = await fetch(`${LOCAL_FALCON_BASE_URL}${endpoint}`, {
     method: "POST",
     headers: {
@@ -384,6 +485,12 @@ async function postLocalFalcon<T>(
     body: buildFormBody(body),
     cache: "no-store",
     signal,
+  });
+
+  debugLog("upstream response", {
+    endpoint,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
   });
 
   const parsed = (await response.json().catch(() => null)) as LocalFalconEnvelope<T> | null;
@@ -422,7 +529,7 @@ async function listReports(
       api_key: apiKey,
       limit: REPORT_LIST_LIMIT,
       platform: DEFAULT_PLATFORM,
-      fields: REPORT_LIST_FIELDS,
+      fields: REPORT_LIST_SELECTION_FIELDS,
       ...body,
     },
     signal,
@@ -806,6 +913,56 @@ function buildCandidateMatches(matches: ReportMatch[]): CandidateMatch[] {
   return candidates;
 }
 
+function findCandidateBySelectedLocation(
+  candidates: CandidateMatch[],
+  selectedLocation: NonNullable<AnalysisPayload["selectedLocation"]>,
+): CandidateMatch | null {
+  if (selectedLocation.placeId) {
+    const placeIdMatch = candidates.find(
+      (candidate) =>
+        candidate.placeId &&
+        candidate.placeId === selectedLocation.placeId,
+    );
+
+    if (placeIdMatch) {
+      return placeIdMatch;
+    }
+  }
+
+  const normalizedName = normalizeText(selectedLocation.name);
+  const normalizedAddress = normalizeText(selectedLocation.address);
+
+  if (!normalizedName) {
+    return null;
+  }
+
+  const exactNameMatch = candidates.find(
+    (candidate) => normalizeText(candidate.name) === normalizedName,
+  );
+
+  if (exactNameMatch) {
+    return exactNameMatch;
+  }
+
+  if (normalizedAddress) {
+    const combinedMatch = candidates.find((candidate) => {
+      const candidateName = normalizeText(candidate.name);
+      const candidateAddress = normalizeText(candidate.address);
+
+      return (
+        candidateName.includes(normalizedName) &&
+        candidateAddress.includes(normalizedAddress)
+      );
+    });
+
+    if (combinedMatch) {
+      return combinedMatch;
+    }
+  }
+
+  return null;
+}
+
 async function resolveSelection(apiKey: string, payload: AnalysisPayload, signal: AbortSignal): Promise<SelectionResult> {
   const keywordReports = await listReports(
     apiKey,
@@ -826,6 +983,47 @@ async function resolveSelection(apiKey: string, payload: AnalysisPayload, signal
     return { status: "not_found", reason: "no_keyword_match" };
   }
 
+  if (payload.selectedLocation) {
+    const selectedLocationCandidates = buildCandidateMatches(keywordScopedMatches);
+
+    if (selectedLocationCandidates.length === 0) {
+      return { status: "not_found", reason: "no_keyword_match" };
+    }
+
+    if (payload.selectedReportKey) {
+      const selectedByReportKey = selectedLocationCandidates.find(
+        (candidate) => candidate.reportKey === payload.selectedReportKey,
+      );
+
+      if (selectedByReportKey) {
+        return {
+          status: "selected",
+          selected: selectedByReportKey,
+          candidates: selectedLocationCandidates,
+        };
+      }
+    }
+
+    const selectedByLocation = findCandidateBySelectedLocation(
+      selectedLocationCandidates,
+      payload.selectedLocation,
+    );
+
+    if (selectedByLocation) {
+      return {
+        status: "selected",
+        selected: selectedByLocation,
+        candidates: selectedLocationCandidates,
+      };
+    }
+
+    if (payload.selectedReportKey) {
+      return { status: "invalid_selection", candidates: selectedLocationCandidates };
+    }
+
+    return { status: "not_found", reason: "no_location_match" };
+  }
+
   const locationScopedMatches = keywordScopedMatches.filter((match) => match.locationScore > 0);
 
   if (locationScopedMatches.length === 0) {
@@ -834,14 +1032,20 @@ async function resolveSelection(apiKey: string, payload: AnalysisPayload, signal
 
   const candidates = buildCandidateMatches(locationScopedMatches);
 
+  if (candidates.length === 0) {
+    return { status: "not_found", reason: "no_location_match" };
+  }
+
   if (payload.selectedReportKey) {
     const selected = candidates.find((candidate) => candidate.reportKey === payload.selectedReportKey);
 
-    if (!selected) {
-      return { status: "invalid_selection", candidates };
+    if (selected) {
+      return { status: "selected", selected, candidates };
     }
+  }
 
-    return { status: "selected", selected, candidates };
+  if (payload.selectedReportKey) {
+    return { status: "invalid_selection", candidates };
   }
 
   if (candidates.length === 1) {
@@ -895,6 +1099,79 @@ function summarizeRanks(dataPoints: ScanDataPoint[]) {
   return summary;
 }
 
+function buildAnalysisResponseFromReport(
+  payload: AnalysisPayload,
+  reportData: ScanReportSummary,
+  fallbackBusiness: {
+    placeId: string;
+    name: string;
+    address: string;
+    rating: number | null;
+    reviews: number | null;
+    phone: string | null;
+    website: string | null;
+  },
+  selection: {
+    matchType: "keyword" | "keyword_location" | "fallback_location";
+    keywordScore: number;
+    locationScore: number;
+    candidates: number;
+  },
+) {
+  const pointsFromArray = Array.isArray(reportData.data_points) ? reportData.data_points : [];
+
+  const pointsCount =
+    toNumber(reportData.points) ??
+    toNumber(Array.isArray(reportData.data_points) ? pointsFromArray.length : reportData.data_points) ??
+    pointsFromArray.length;
+
+  const rankSummary = summarizeRanks(pointsFromArray);
+  const top10Rate = pointsCount > 0 ? Math.round((rankSummary.top10 / pointsCount) * 100) : 0;
+
+  return {
+    success: true,
+    requiresSelection: false as const,
+    input: {
+      location: payload.location,
+      keyword: payload.keyword,
+    },
+    business: {
+      placeId: reportData.location?.place_id ?? reportData.place_id ?? fallbackBusiness.placeId,
+      name: reportData.location?.name ?? fallbackBusiness.name,
+      address: reportData.location?.address ?? fallbackBusiness.address,
+      rating: toNumber(reportData.location?.rating) ?? fallbackBusiness.rating,
+      reviews: toNumber(reportData.location?.reviews) ?? fallbackBusiness.reviews,
+      phone: reportData.location?.phone?.toString() ?? fallbackBusiness.phone,
+      website: reportData.location?.url ?? fallbackBusiness.website,
+    },
+    metrics: {
+      points: pointsCount,
+      foundIn: toNumber(reportData.found_in) ?? rankSummary.top20,
+      arp: toNumber(reportData.arp),
+      atrp: toNumber(reportData.atrp),
+      solv: toNumber(reportData.solv),
+      top3: rankSummary.top3,
+      top10: rankSummary.top10,
+      top20: rankSummary.top20,
+      notFound: rankSummary.notFound,
+      top10Rate,
+    },
+    maps: {
+      before: reportData.image ?? null,
+      heatmap: reportData.heatmap ?? null,
+      afterDemo: "/assets/figma/after-ranking.png",
+    },
+    report: {
+      key: reportData.report_key ?? null,
+      publicUrl: reportData.public_url ?? null,
+      pdf: reportData.pdf ?? null,
+      date: reportData.date ?? null,
+      timestamp: toNumber(reportData.timestamp) ?? null,
+    },
+    selection,
+  };
+}
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.LOCAL_FALCON_API;
 
@@ -920,14 +1197,97 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  debugLog("incoming request", {
+    location: parsedBody.location,
+    keyword: parsedBody.keyword,
+    selectedReportKey: parsedBody.selectedReportKey ?? null,
+    forceRunScan: parsedBody.forceRunScan === true,
+    selectedLocation: parsedBody.selectedLocation
+      ? {
+          placeId: parsedBody.selectedLocation.placeId,
+          name: parsedBody.selectedLocation.name,
+          lat: parsedBody.selectedLocation.lat,
+          lng: parsedBody.selectedLocation.lng,
+        }
+      : null,
+  });
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), LOCAL_FALCON_TIMEOUT_MS);
+  const onDemandScanKey = buildOnDemandScanCacheKey(parsedBody);
 
   try {
+    if (!parsedBody.selectedReportKey) {
+      const cachedOnDemandScan = readCompletedOnDemandScan(onDemandScanKey);
+
+      if (cachedOnDemandScan) {
+        return NextResponse.json(cachedOnDemandScan);
+      }
+
+      const inFlightOnDemandScan = inFlightOnDemandScans.get(onDemandScanKey);
+
+      if (inFlightOnDemandScan) {
+        return NextResponse.json(await inFlightOnDemandScan);
+      }
+    }
+
+    if (parsedBody.forceRunScan) {
+      const generatedScan = await runOrJoinOnDemandScan(apiKey, parsedBody, controller.signal);
+      return NextResponse.json(generatedScan);
+    }
+
+    if (parsedBody.selectedReportKey) {
+      try {
+        const directReport = await postLocalFalcon<ScanReportSummary>(
+          `/v1/reports/${parsedBody.selectedReportKey}/`,
+          {
+            api_key: apiKey,
+            fields: REPORT_DETAIL_FIELDS,
+          },
+          controller.signal,
+        );
+
+        const directBusinessFallback = {
+          placeId: parsedBody.selectedLocation?.placeId ?? "",
+          name: parsedBody.selectedLocation?.name || "Ausgewaehltes Profil",
+          address: parsedBody.selectedLocation?.address || parsedBody.location,
+          rating: parsedBody.selectedLocation?.rating ?? null,
+          reviews: parsedBody.selectedLocation?.reviews ?? null,
+          phone: parsedBody.selectedLocation?.phone ?? null,
+          website: parsedBody.selectedLocation?.website ?? null,
+        };
+
+        return NextResponse.json(
+          buildAnalysisResponseFromReport(
+            parsedBody,
+            directReport.data,
+            directBusinessFallback,
+            {
+              matchType: parsedBody.selectedLocation ? "keyword_location" : "keyword",
+              keywordScore: scoreTextMatch(directReport.data.keyword ?? "", parsedBody.keyword),
+              locationScore: scoreTextMatch(
+                `${directReport.data.location?.name ?? ""} ${directReport.data.location?.address ?? ""}`,
+                parsedBody.location,
+              ),
+              candidates: 1,
+            },
+          ),
+        );
+      } catch (error) {
+        const shouldFallbackToSelection =
+          error instanceof RouteError &&
+          (error.status === 400 || error.status === 404 || error.status === 422);
+
+        if (!shouldFallbackToSelection) {
+          throw error;
+        }
+      }
+    }
+
     const selection = await resolveSelection(apiKey, parsedBody, controller.signal);
 
     if (selection.status === "not_found") {
-      const generatedScan = await runOnDemandScan(apiKey, parsedBody, controller.signal);
+      const generatedScan = await runOrJoinOnDemandScan(apiKey, parsedBody, controller.signal);
       return NextResponse.json(generatedScan);
     }
 
@@ -957,63 +1317,41 @@ export async function POST(request: NextRequest) {
     );
 
     const reportData = report.data;
-    const pointsFromArray = Array.isArray(reportData.data_points) ? reportData.data_points : [];
+    const fallbackBusiness = {
+      placeId: selection.selected.placeId,
+      name: selection.selected.name,
+      address: selection.selected.address,
+      rating: null,
+      reviews: null,
+      phone: null,
+      website: null,
+    };
 
-    const pointsCount =
-      toNumber(reportData.points) ??
-      toNumber(Array.isArray(reportData.data_points) ? pointsFromArray.length : reportData.data_points) ??
-      pointsFromArray.length;
-
-    const rankSummary = summarizeRanks(pointsFromArray);
-    const top10Rate = pointsCount > 0 ? Math.round((rankSummary.top10 / pointsCount) * 100) : 0;
-
-    return NextResponse.json({
-      success: true,
-      requiresSelection: false,
-      input: {
-        location: parsedBody.location,
-        keyword: parsedBody.keyword,
-      },
-      business: {
-        placeId: reportData.location?.place_id ?? reportData.place_id ?? selection.selected.placeId,
-        name: reportData.location?.name ?? selection.selected.name,
-        address: reportData.location?.address ?? selection.selected.address,
-        rating: toNumber(reportData.location?.rating),
-        reviews: toNumber(reportData.location?.reviews),
-        phone: reportData.location?.phone?.toString() ?? null,
-        website: reportData.location?.url ?? null,
-      },
-      metrics: {
-        points: pointsCount,
-        foundIn: toNumber(reportData.found_in) ?? rankSummary.top20,
-        arp: toNumber(reportData.arp),
-        atrp: toNumber(reportData.atrp),
-        solv: toNumber(reportData.solv),
-        top3: rankSummary.top3,
-        top10: rankSummary.top10,
-        top20: rankSummary.top20,
-        notFound: rankSummary.notFound,
-        top10Rate,
-      },
-      maps: {
-        before: reportData.image ?? null,
-        heatmap: reportData.heatmap ?? null,
-        afterDemo: "/assets/figma/after-ranking.png",
-      },
-      report: {
-        key: reportData.report_key ?? selection.selected.reportKey,
-        publicUrl: reportData.public_url ?? null,
-        pdf: reportData.pdf ?? null,
-        date: reportData.date ?? selection.selected.date,
-        timestamp: toNumber(reportData.timestamp) ?? selection.selected.timestamp,
-      },
-      selection: {
+    const responsePayload = buildAnalysisResponseFromReport(
+      parsedBody,
+      reportData,
+      fallbackBusiness,
+      {
         matchType: selection.selected.matchType,
         keywordScore: selection.selected.keywordScore,
         locationScore: selection.selected.locationScore,
         candidates: selection.candidates.length,
       },
-    });
+    );
+
+    if (!responsePayload.report.key && selection.selected.reportKey) {
+      responsePayload.report.key = selection.selected.reportKey;
+    }
+
+    if (!responsePayload.report.date && selection.selected.date) {
+      responsePayload.report.date = selection.selected.date;
+    }
+
+    if (responsePayload.report.timestamp === null && selection.selected.timestamp) {
+      responsePayload.report.timestamp = selection.selected.timestamp;
+    }
+
+    return NextResponse.json(responsePayload);
   } catch (error) {
     const isAbortError =
       error instanceof DOMException

@@ -1,85 +1,15 @@
 "use client";
 
-import { Check, Loader2, MapPin, Search } from "lucide-react";
+import { Check, MapPin, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-import type { PreselectedLocation } from "@/types/preselected-location";
-
-type SearchApiSuccess = {
-  success: true;
-  query: string;
-  results: PreselectedLocation[];
-};
-
-type SearchApiError = {
-  success: false;
-  message?: string;
-};
-
-type SearchApiResponse = SearchApiSuccess | SearchApiError;
 
 export function Hero() {
   const router = useRouter();
   const [location, setLocation] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [matches, setMatches] = useState<PreselectedLocation[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<PreselectedLocation | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
 
-  const canSearch = location.trim().length >= 3;
-  const canSubmit = keyword.trim().length > 0 && selectedLocation !== null && !isSearching;
-
-  const handleLocationSearch = async () => {
-    if (!canSearch) {
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchError(null);
-    setSelectedLocation(null);
-
-    try {
-      const response = await fetch("/api/local-falcon/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: location.trim(),
-          keyword: keyword.trim() || undefined,
-        }),
-      });
-
-      const payload = (await response.json().catch(() => null)) as SearchApiResponse | null;
-
-      if (!payload || !response.ok || payload.success === false) {
-        const message =
-          payload && "message" in payload && typeof payload.message === "string"
-            ? payload.message
-            : "Standortsuche ist fehlgeschlagen.";
-        setMatches([]);
-        setSearchError(message);
-        return;
-      }
-
-      setMatches(payload.results);
-
-      if (payload.results.length === 0) {
-        setSearchError(
-          "Keine passenden Standorte gefunden. Bitte Firmenname und Stadt pruefen.",
-        );
-      }
-    } catch (error) {
-      setMatches([]);
-      setSearchError(
-        error instanceof Error ? error.message : "Standortsuche ist fehlgeschlagen.",
-      );
-    } finally {
-      setIsSearching(false);
-    }
-  };
+  const canSubmit = location.trim().length >= 3 && keyword.trim().length > 0;
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -89,47 +19,10 @@ export function Hero() {
     }
 
     const params = new URLSearchParams();
-    params.set(
-      "location",
-      `${selectedLocation.name}${selectedLocation.address ? `, ${selectedLocation.address}` : ""}`,
-    );
+    params.set("location", location.trim());
     params.set("keyword", keyword.trim());
-    params.set("placeId", selectedLocation.placeId);
-    params.set("lat", selectedLocation.lat.toString());
-    params.set("lng", selectedLocation.lng.toString());
-    params.set("businessName", selectedLocation.name);
-    params.set("businessAddress", selectedLocation.address);
-
-    if (selectedLocation.rating !== null) {
-      params.set("businessRating", selectedLocation.rating.toString());
-    }
-
-    if (selectedLocation.reviews !== null) {
-      params.set("businessReviews", selectedLocation.reviews.toString());
-    }
-
-    if (selectedLocation.phone) {
-      params.set("businessPhone", selectedLocation.phone);
-    }
-
-    if (selectedLocation.website) {
-      params.set("businessUrl", selectedLocation.website);
-    }
 
     router.push(`/analyse?${params.toString()}`);
-  };
-
-  const handleLocationChange = (nextValue: string) => {
-    setLocation(nextValue);
-    setSelectedLocation(null);
-    setMatches([]);
-    setSearchError(null);
-  };
-
-  const handleSelectLocation = (match: PreselectedLocation) => {
-    setSelectedLocation(match);
-    setLocation(`${match.name}${match.address ? `, ${match.address}` : ""}`);
-    setSearchError(null);
   };
 
   return (
@@ -173,7 +66,7 @@ export function Hero() {
                     id="location"
                     type="text"
                     value={location}
-                    onChange={(event) => handleLocationChange(event.target.value)}
+                    onChange={(event) => setLocation(event.target.value)}
                     placeholder="z.B. Firmenname + Stadt"
                     className="w-full rounded-lg border border-slate-200 py-3.5 pr-4 pl-12 text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
@@ -199,61 +92,6 @@ export function Hero() {
                 </div>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => void handleLocationSearch()}
-                disabled={!canSearch || isSearching}
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60">
-                {isSearching ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Standortsuche...
-                  </>
-                ) : (
-                  <>
-                    <Search className="h-4 w-4" />
-                    Standort suchen
-                  </>
-                )}
-              </button>
-              <p className="text-xs text-slate-500">
-                Bitte zuerst Standort suchen und Ihr Unternehmen auswaehlen.
-              </p>
-            </div>
-
-            {searchError && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {searchError}
-              </div>
-            )}
-
-            {selectedLocation && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm text-emerald-800">
-                Ausgewaehlt: <span className="font-semibold">{selectedLocation.name}</span>{" "}
-                <span className="text-emerald-700">({selectedLocation.address})</span>
-              </div>
-            )}
-
-            {matches.length > 0 && (
-              <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-                {matches.map((match) => (
-                  <button
-                    key={match.placeId}
-                    type="button"
-                    onClick={() => handleSelectLocation(match)}
-                    className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                      selectedLocation?.placeId === match.placeId
-                        ? "border-emerald-400 bg-emerald-50"
-                        : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50"
-                    }`}>
-                    <p className="text-sm font-semibold text-slate-900">{match.name}</p>
-                    <p className="mt-1 text-xs text-slate-600">{match.address}</p>
-                  </button>
-                ))}
-              </div>
-            )}
 
             <button
               type="submit"

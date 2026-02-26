@@ -20,6 +20,27 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Checkout Payments (Stripe + PayPal)
+
+1. Create a local env file:
+
+```bash
+cp .env.example .env
+```
+
+2. Fill these required keys:
+
+- `APP_BASE_URL` (for local dev usually `http://localhost:3000`)
+- `STRIPE_SECRET_KEY`
+- `PAYPAL_CLIENT_ID`
+- `PAYPAL_CLIENT_SECRET`
+- optional: `PAYPAL_API_BASE` (sandbox default is prefilled)
+
+3. Start the app and test checkout:
+
+- Stripe methods: credit card + SEPA via `/api/payments/stripe/checkout`
+- PayPal redirect + capture via `/api/payments/paypal/order` and `/api/payments/paypal/capture`
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

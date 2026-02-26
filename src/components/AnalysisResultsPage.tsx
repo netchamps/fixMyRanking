@@ -13,102 +13,33 @@ import {
 
 import { Footer } from "@/components/Footer";
 import { Navigation } from "@/components/Navigation";
+import {
+  buildAnalysisCacheKey,
+  isAnalysisPreloadPending,
+  readCachedAnalysisResult,
+  writeCachedAnalysisResult,
+} from "@/lib/analysis-cache";
+import type {
+  AnalysisApiResponse,
+  AnalysisResult,
+  SelectionMatch,
+} from "@/types/analysis-api";
 import type { PreselectedLocation } from "@/types/preselected-location";
 
 type AnalysisResultsPageProps = {
   location: string;
   keyword: string;
   selectedLocation: PreselectedLocation | null;
+  selectedReportKey?: string | null;
 };
-
-type SelectionMatch = {
-  reportKey: string;
-  placeId: string;
-  name: string;
-  address: string;
-  keyword: string;
-  date: string | null;
-  timestamp: number;
-  matchType: "keyword" | "keyword_location" | "fallback_location";
-  keywordScore: number;
-  locationScore: number;
-};
-
-type AnalysisSelectionRequired = {
-  success: true;
-  requiresSelection: true;
-  message?: string;
-  input: {
-    location: string;
-    keyword: string;
-  };
-  matches: SelectionMatch[];
-};
-
-type AnalysisResult = {
-  success: true;
-  requiresSelection: false;
-  message?: string;
-  input: {
-    location: string;
-    keyword: string;
-  };
-  business: {
-    placeId: string;
-    name: string;
-    address: string;
-    rating: number | null;
-    reviews: number | null;
-    phone: string | null;
-    website: string | null;
-  };
-  metrics: {
-    points: number;
-    foundIn: number;
-    arp: number | null;
-    atrp: number | null;
-    solv: number | null;
-    top3: number;
-    top10: number;
-    top20: number;
-    notFound: number;
-    top10Rate: number;
-  };
-  maps: {
-    before: string | null;
-    heatmap: string | null;
-    afterDemo: string;
-  };
-  report: {
-    key: string | null;
-    publicUrl: string | null;
-    pdf: string | null;
-    date: string | null;
-    timestamp: number | null;
-  };
-  selection: {
-    matchType: "keyword" | "keyword_location" | "fallback_location";
-    keywordScore: number;
-    locationScore: number;
-    candidates: number;
-  };
-};
-
-type AnalysisErrorPayload = {
-  success: false;
-  message?: string;
-};
-
-type AnalysisApiResponse =
-  | AnalysisResult
-  | AnalysisSelectionRequired
-  | AnalysisErrorPayload;
 
 type Segment = {
   label: string;
   value: number;
   color: string;
 };
+const PRELOAD_HANDOFF_WAIT_MS = 3_000;
+const PRELOAD_HANDOFF_POLL_MS = 250;
 
 function formatMetric(value: number | null, suffix = "") {
   if (value === null) {
@@ -166,14 +97,114 @@ function SegmentBars({ segments }: { segments: Segment[] }) {
 function LoadingState() {
   return (
     <section className="mx-auto mb-16 w-full max-w-5xl px-6">
-      <div className="space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-        <p className="text-sm text-emerald-800">Local-Falcon-Daten werden geladen.</p>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="h-40 animate-pulse rounded-2xl bg-emerald-100/70" />
-          <div className="h-40 animate-pulse rounded-2xl bg-emerald-100/70" />
-          <div className="h-40 animate-pulse rounded-2xl bg-emerald-100/70" />
+      <div className="rounded-2xl border border-emerald-200 bg-gradient-to-b from-white to-emerald-50 p-10 text-center shadow-sm">
+        <div className="mx-auto mb-6 flex h-28 w-28 items-center justify-center [perspective:900px]">
+          <div className="loader-3d">
+            <span className="loader-ring ring-one" />
+            <span className="loader-ring ring-two" />
+            <span className="loader-ring ring-three" />
+            <span className="loader-core" />
+          </div>
         </div>
+
+        <p className="text-lg font-semibold text-slate-900">Analyse wird erstellt ...</p>
+        <p className="mt-2 text-sm text-slate-600">
+          Wir laden Ihre Local-Falcon-Daten und bereiten die Heatmap auf.
+        </p>
+        <p className="mt-1 text-xs text-emerald-700">
+          Das dauert in der Regel nur wenige Sekunden.
+        </p>
       </div>
+
+      <style jsx>{`
+        .loader-3d {
+          position: relative;
+          width: 92px;
+          height: 92px;
+          transform-style: preserve-3d;
+          animation: loader-wobble 2.2s ease-in-out infinite;
+        }
+
+        .loader-ring {
+          position: absolute;
+          inset: 0;
+          border-radius: 9999px;
+          border: 4px solid transparent;
+          box-shadow: 0 0 18px rgba(16, 185, 129, 0.2);
+        }
+
+        .ring-one {
+          border-top-color: #10b981;
+          border-left-color: #059669;
+          transform: rotateX(68deg) rotateY(12deg);
+          animation: spin-one 1.15s linear infinite;
+        }
+
+        .ring-two {
+          border-top-color: #14b8a6;
+          border-right-color: #0d9488;
+          transform: rotateX(18deg) rotateY(72deg);
+          animation: spin-two 1.45s linear infinite;
+        }
+
+        .ring-three {
+          border-bottom-color: #34d399;
+          border-left-color: #10b981;
+          transform: rotateX(76deg) rotateY(2deg);
+          animation: spin-three 1.05s linear infinite;
+        }
+
+        .loader-core {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 20px;
+          height: 20px;
+          border-radius: 9999px;
+          transform: translate(-50%, -50%);
+          background: radial-gradient(circle at 35% 30%, #a7f3d0 0%, #10b981 60%, #047857 100%);
+          box-shadow: 0 0 22px rgba(16, 185, 129, 0.55);
+          animation: core-pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes spin-one {
+          to {
+            transform: rotateX(68deg) rotateY(12deg) rotateZ(360deg);
+          }
+        }
+
+        @keyframes spin-two {
+          to {
+            transform: rotateX(18deg) rotateY(72deg) rotateZ(-360deg);
+          }
+        }
+
+        @keyframes spin-three {
+          to {
+            transform: rotateX(76deg) rotateY(2deg) rotateZ(360deg);
+          }
+        }
+
+        @keyframes core-pulse {
+          0%,
+          100% {
+            transform: translate(-50%, -50%) scale(0.9);
+          }
+          50% {
+            transform: translate(-50%, -50%) scale(1.12);
+          }
+        }
+
+        @keyframes loader-wobble {
+          0%,
+          100% {
+            transform: rotateX(8deg) rotateY(-10deg);
+          }
+          50% {
+            transform: rotateX(-8deg) rotateY(12deg);
+          }
+        }
+      `}</style>
     </section>
   );
 }
@@ -182,6 +213,7 @@ export function AnalysisResultsPage({
   location,
   keyword,
   selectedLocation,
+  selectedReportKey,
 }: AnalysisResultsPageProps) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [selectionMatches, setSelectionMatches] = useState<SelectionMatch[]>([]);
@@ -189,79 +221,145 @@ export function AnalysisResultsPage({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorJson, setErrorJson] = useState<string | null>(null);
+  const initialReportKey = selectedReportKey?.trim() || undefined;
+
+  const buildCacheKey = useCallback(
+    (reportKey?: string) =>
+      buildAnalysisCacheKey({
+        location,
+        keyword,
+        selectedLocation,
+        selectedReportKey: reportKey,
+      }),
+    [keyword, location, selectedLocation],
+  );
+
+  const persistResultInCache = useCallback(
+    (analysisResult: AnalysisResult, reportKey?: string) => {
+      writeCachedAnalysisResult(buildCacheKey(reportKey), analysisResult);
+      writeCachedAnalysisResult(buildCacheKey(), analysisResult);
+
+      if (analysisResult.report.key) {
+        writeCachedAnalysisResult(buildCacheKey(analysisResult.report.key), analysisResult);
+      }
+    },
+    [buildCacheKey],
+  );
 
   const runAnalysis = useCallback(
-    async (selectedReportKey?: string) => {
+    async (requestedReportKey?: string) => {
       setIsLoading(true);
       setError(null);
       setErrorJson(null);
 
       try {
-        const response = await fetch("/api/local-falcon/scan", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            location,
-            keyword,
-            selectedReportKey,
-            selectedLocation,
-          }),
-        });
+        const cached =
+          readCachedAnalysisResult(buildCacheKey(requestedReportKey)) ??
+          readCachedAnalysisResult(buildCacheKey());
 
-        const payload = (await response.json().catch(() => null)) as AnalysisApiResponse | null;
-
-        if (!payload) {
-          const message = "Analyse konnte nicht geladen werden.";
-          setError(message);
-          setErrorJson(
-            JSON.stringify(
-              {
-                status: response.status,
-                payload: { success: false, message },
-              },
-              null,
-              2,
-            ),
-          );
+        if (cached) {
+          setResult(cached);
+          setSelectionMatches([]);
+          setSelectionMessage("");
           return;
         }
 
-        if (!response.ok || payload.success === false) {
-          const message =
-            payload && "message" in payload && typeof payload.message === "string"
-              ? payload.message
-              : "Analyse konnte nicht geladen werden.";
+        let activeReportKey = requestedReportKey;
 
-          const fallbackPayload = payload ?? { success: false, message };
-          setError(message);
-          setErrorJson(
-            JSON.stringify(
-              {
-                status: response.status,
-                payload: fallbackPayload,
-              },
-              null,
-              2,
-            ),
-          );
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const response = await fetch("/api/local-falcon/scan", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              location,
+              keyword,
+              selectedReportKey: activeReportKey,
+              selectedLocation,
+            }),
+          });
+
+          const payload = (await response.json().catch(() => null)) as AnalysisApiResponse | null;
+
+          if (!payload) {
+            const message = "Analyse konnte nicht geladen werden.";
+            setError(message);
+            setErrorJson(
+              JSON.stringify(
+                {
+                  status: response.status,
+                  payload: { success: false, message },
+                },
+                null,
+                2,
+              ),
+            );
+            return;
+          }
+
+          if (!response.ok || payload.success === false) {
+            const message =
+              payload && "message" in payload && typeof payload.message === "string"
+                ? payload.message
+                : "Analyse konnte nicht geladen werden.";
+
+            const fallbackPayload = payload ?? { success: false, message };
+            setError(message);
+            setErrorJson(
+              JSON.stringify(
+                {
+                  status: response.status,
+                  payload: fallbackPayload,
+                },
+                null,
+                2,
+              ),
+            );
+            return;
+          }
+
+          if (payload.requiresSelection === true) {
+            const autoMatch =
+              selectedLocation?.placeId &&
+              payload.matches.find(
+                (match) => match.placeId && match.placeId === selectedLocation.placeId,
+              );
+
+            if (autoMatch && autoMatch.reportKey !== activeReportKey) {
+              activeReportKey = autoMatch.reportKey;
+              continue;
+            }
+
+            setResult(null);
+            setSelectionMatches(payload.matches);
+            setSelectionMessage(
+              payload.message ??
+                "Mehrere passende Profile gefunden. Bitte waehlen Sie Ihr Unternehmen aus.",
+            );
+            return;
+          }
+
+          persistResultInCache(payload, activeReportKey);
+          setResult(payload);
+          setSelectionMatches([]);
+          setSelectionMessage("");
           return;
         }
 
-        if (payload.requiresSelection === true) {
-          setResult(null);
-          setSelectionMatches(payload.matches);
-          setSelectionMessage(
-            payload.message ??
-              "Mehrere passende Profile gefunden. Bitte waehlen Sie Ihr Unternehmen aus.",
-          );
-          return;
-        }
-
-        setResult(payload);
-        setSelectionMatches([]);
-        setSelectionMessage("");
+        const message =
+          "Analyse konnte nicht automatisch dem ausgewaehlten Unternehmen zugeordnet werden.";
+        setError(message);
+        setErrorJson(
+          JSON.stringify(
+            {
+              success: false,
+              message,
+            },
+            null,
+            2,
+          ),
+        );
       } catch (analysisError) {
         const message =
           analysisError instanceof Error
@@ -282,7 +380,13 @@ export function AnalysisResultsPage({
         setIsLoading(false);
       }
     },
-    [keyword, location, selectedLocation],
+    [
+      buildCacheKey,
+      keyword,
+      location,
+      persistResultInCache,
+      selectedLocation,
+    ],
   );
 
   useEffect(() => {
@@ -291,8 +395,70 @@ export function AnalysisResultsPage({
       return;
     }
 
-    void runAnalysis();
-  }, [keyword, location, runAnalysis]);
+    let isCancelled = false;
+
+    const adoptPreloadedResult = async () => {
+      const baseCacheKey = buildCacheKey();
+      const initialCacheKey = buildCacheKey(initialReportKey);
+      const readCached = () =>
+        readCachedAnalysisResult(initialCacheKey) ??
+        readCachedAnalysisResult(baseCacheKey);
+
+      const cachedInitial = readCached();
+
+      if (cachedInitial) {
+        setResult(cachedInitial);
+        setSelectionMatches([]);
+        setSelectionMessage("");
+        setIsLoading(false);
+        return true;
+      }
+
+      if (!isAnalysisPreloadPending(baseCacheKey)) {
+        return false;
+      }
+
+      if (!isAnalysisPreloadPending(baseCacheKey)) {
+        return false;
+      }
+
+      const deadline = Date.now() + PRELOAD_HANDOFF_WAIT_MS;
+
+      while (!isCancelled && Date.now() < deadline) {
+        const cached = readCached();
+
+        if (cached) {
+          setResult(cached);
+          setSelectionMatches([]);
+          setSelectionMessage("");
+          setIsLoading(false);
+          return true;
+        }
+
+        if (!isAnalysisPreloadPending(baseCacheKey)) {
+          break;
+        }
+
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, PRELOAD_HANDOFF_POLL_MS);
+        });
+      }
+
+      return false;
+    };
+
+    void (async () => {
+      const adopted = await adoptPreloadedResult();
+
+      if (!adopted && !isCancelled) {
+        void runAnalysis(initialReportKey);
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [buildCacheKey, initialReportKey, keyword, location, runAnalysis]);
 
   const analysisDate = useMemo(() => {
     if (!result) {
@@ -301,6 +467,25 @@ export function AnalysisResultsPage({
 
     return formatReportDate(result.report.date, result.report.timestamp);
   }, [result]);
+
+  const proHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("package", "silver");
+
+    if (location) {
+      params.set("location", location);
+    }
+
+    if (keyword) {
+      params.set("keyword", keyword);
+    }
+
+    if (result?.business.name) {
+      params.set("businessName", result.business.name);
+    }
+
+    return `/pro${params.size > 0 ? `?${params.toString()}` : ""}`;
+  }, [keyword, location, result]);
 
   if (!location || !keyword) {
     return (
@@ -412,7 +597,7 @@ export function AnalysisResultsPage({
               )}
               <button
                 type="button"
-                onClick={() => void runAnalysis()}
+                onClick={() => void runAnalysis(initialReportKey)}
                 className="mt-6 rounded-lg bg-rose-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-rose-700"
               >
                 Erneut versuchen
@@ -618,7 +803,7 @@ export function AnalysisResultsPage({
                 </p>
 
                 <Link
-                  href="/#start"
+                  href={proHref}
                   className="inline-flex transform items-center gap-3 rounded-xl bg-emerald-600 px-12 py-6 text-xl font-bold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:bg-emerald-700 hover:shadow-2xl hover:shadow-emerald-500/40"
                 >
                   Jetzt Optimierungs-Paket auswaehlen
