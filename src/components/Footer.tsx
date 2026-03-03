@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MapPin } from "lucide-react";
 
 export function Footer() {
@@ -11,7 +12,15 @@ export function Footer() {
           <span className="font-semibold">FixMyRanking</span>
         </div>
 
-        <p>© {new Date().getFullYear()} FixMyRanking. Alle Rechte vorbehalten.</p>
+        <div className="flex flex-wrap items-center justify-center gap-4">
+          <Link href="/impressum" className="hover:text-slate-700 hover:underline">
+            Impressum
+          </Link>
+          <Link href="/agb" className="hover:text-slate-700 hover:underline">
+            AGB
+          </Link>
+          <p>© {new Date().getFullYear()} FixMyRanking. Alle Rechte vorbehalten.</p>
+        </div>
       </div>
     </footer>
   );

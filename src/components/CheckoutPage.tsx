@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   Check,
@@ -540,9 +541,9 @@ export function CheckoutPage({
                 </span>
                 <span className="text-sm text-slate-700">
                   Ich akzeptiere die{" "}
-                  <a href="#" className="font-medium text-emerald-600 hover:underline">
+                  <Link href="/agb" className="font-medium text-emerald-600 hover:underline">
                     AGB
-                  </a>{" "}
+                  </Link>{" "}
                   und{" "}
                   <a href="#" className="font-medium text-emerald-600 hover:underline">
                     Datenschutzerklärung
