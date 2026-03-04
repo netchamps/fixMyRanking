@@ -29,7 +29,7 @@ export const checkoutPackageData: Record<CheckoutPackage, CheckoutPackageConfig>
   bronze: {
     badgeLabel: "BRONZE",
     badgeClass: "bg-amber-700",
-    name: "FixMyRanking Pro - Bronze",
+    name: "KundenRadar24 Pro - Bronze",
     duration: "1 Monat",
     monthlyPrice: 98,
     totalPrice: 98,
@@ -37,7 +37,7 @@ export const checkoutPackageData: Record<CheckoutPackage, CheckoutPackageConfig>
   silver: {
     badgeLabel: "SILVER",
     badgeClass: "bg-slate-600",
-    name: "FixMyRanking Pro - Silber",
+    name: "KundenRadar24 Pro - Silber",
     duration: "3 Monate",
     monthlyPrice: 89.66,
     totalPrice: 269,
@@ -45,7 +45,7 @@ export const checkoutPackageData: Record<CheckoutPackage, CheckoutPackageConfig>
   gold: {
     badgeLabel: "GOLD",
     badgeClass: "bg-yellow-600",
-    name: "FixMyRanking Pro - Gold",
+    name: "KundenRadar24 Pro - Gold",
     duration: "12 Monate",
     monthlyPrice: 81.58,
     totalPrice: 979,

@@ -122,7 +122,7 @@ export async function createPayPalOrder(input: {
       payment_source: {
         paypal: {
           experience_context: {
-            brand_name: "FixMyRanking",
+            brand_name: "KundenRadar24",
             locale: "de-DE",
             shipping_preference: "NO_SHIPPING",
             user_action: "PAY_NOW",

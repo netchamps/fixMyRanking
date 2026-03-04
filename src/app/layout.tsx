@@ -14,7 +14,7 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "FixMyRanking",
+  title: "KundenRadar24",
   description: "Landingpage aus der Figma-Datei in Next.js",
 };
 

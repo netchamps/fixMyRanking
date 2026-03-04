@@ -20,24 +20,24 @@ const faqData: FAQCategory[] = [
     label: "Allgemein",
     items: [
       {
-        question: "Was genau macht FixMyRanking?",
+        question: "Was genau macht KundenRadar24?",
         answer:
-          "FixMyRanking analysiert Ihre lokale Sichtbarkeit in Google Maps und optimiert gezielt die Faktoren, die Ihr Ranking beeinflussen.",
+          "KundenRadar24 analysiert Ihre lokale Sichtbarkeit in Google Maps und optimiert gezielt die Faktoren, die Ihr Ranking beeinflussen.",
       },
       {
-        question: "Ist FixMyRanking nur ein Analyse-Tool?",
+        question: "Ist KundenRadar24 nur ein Analyse-Tool?",
         answer:
           "Nein. Die Analyse ist der erste Schritt. Der Fokus liegt auf der aktiven Optimierung Ihres Google Business Profils und relevanter lokaler Ranking-Signale.",
       },
       {
-        question: "Fur welche Unternehmen eignet sich FixMyRanking?",
+        question: "Fur welche Unternehmen eignet sich KundenRadar24?",
         answer:
-          "FixMyRanking eignet sich fuer lokal tätige Unternehmen, z.B. Handwerksbetriebe, Dienstleister, Praxen, Gastronomie und Einzelhandel.",
+          "KundenRadar24 eignet sich fuer lokal tätige Unternehmen, z.B. Handwerksbetriebe, Dienstleister, Praxen, Gastronomie und Einzelhandel.",
       },
       {
-        question: "Was unterscheidet FixMyRanking von klassischem SEO?",
+        question: "Was unterscheidet KundenRadar24 von klassischem SEO?",
         answer:
-          "FixMyRanking konzentriert sich gezielt auf lokale Google-Maps-Rankings, also dort, wo lokale Kunden tatsachlich suchen.",
+          "KundenRadar24 konzentriert sich gezielt auf lokale Google-Maps-Rankings, also dort, wo lokale Kunden tatsachlich suchen.",
       },
     ],
   },
@@ -72,7 +72,7 @@ const faqData: FAQCategory[] = [
     label: "Support",
     items: [
       {
-        question: "Was bedeutet Bewertungsmanagement bei FixMyRanking?",
+        question: "Was bedeutet Bewertungsmanagement bei KundenRadar24?",
         answer:
           "Wir unterstutzen Sie beim Umgang mit negativen Google-Bewertungen und ubernehmen die strukturierte Bearbeitung problematischer Eintrage.",
       },
@@ -82,7 +82,7 @@ const faqData: FAQCategory[] = [
           "Nein. Sie mussen sich um keine technischen Details kummern. Analyse und Optimierung werden vollstandig ubernommen.",
       },
       {
-        question: "Wie starte ich mit FixMyRanking?",
+        question: "Wie starte ich mit KundenRadar24?",
         answer:
           "Geben Sie Standort und Keyword ein. Sie erhalten eine erste Auswertung Ihrer lokalen Sichtbarkeit und sehen direkt Optimierungspotenziale.",
       },
@@ -146,7 +146,7 @@ export function FAQ() {
           Wir haben Antworten auf Ihre Fragen
         </h2>
         <p className="mx-auto max-w-3xl text-xl text-slate-600">
-          Hier finden Sie die wichtigsten Fragen rund um FixMyRanking, unsere
+          Hier finden Sie die wichtigsten Fragen rund um KundenRadar24, unsere
           Leistungen und den Ablauf.
         </p>
       </div>

@@ -36,7 +36,7 @@ type PackageCard = {
 const packageCards: PackageCard[] = [
   {
     packageKey: "bronze",
-    title: "FixMyRanking Pro - Bronze",
+    title: "KundenRadar24 Pro - Bronze",
     subtitle: "Maximale Flexibilität",
     subline: "Ideal für kleinere Standorte oder als erste Optimierungsphase.",
     priceMain: "98 EUR exkl. MwSt.",
@@ -58,14 +58,14 @@ const packageCards: PackageCard[] = [
   },
   {
     packageKey: "silver",
-    title: "FixMyRanking Pro - Silber",
+    title: "KundenRadar24 Pro - Silber",
     subtitle: "Für messbare Verbesserungen",
     priceMain: "269 EUR exkl. MwSt.",
     priceSecondary: "Laufzeit: 3 Monate",
     priceDetail: "entspricht 89,66 EUR exkl. MwSt. / Monat",
     microcopy: "Empfohlen für die meisten Standorte",
     features: [
-      "Alle Leistungen aus FixMyRanking Pro - Bronze",
+      "Alle Leistungen aus KundenRadar24 Pro - Bronze",
       "Kontinuierliche Optimierung über 3 Monate",
       "Mehr Stabilität für lokale Rankings",
       "Nachhaltiger Aufbau lokaler Sichtbarkeit",
@@ -81,13 +81,13 @@ const packageCards: PackageCard[] = [
   },
   {
     packageKey: "gold",
-    title: "FixMyRanking Pro - Gold",
+    title: "KundenRadar24 Pro - Gold",
     subtitle: "Langfristige Sichtbarkeit & Stabilität",
     priceMain: "979 EUR exkl. MwSt.",
     priceSecondary: "Laufzeit: 12 Monate",
     priceDetail: "entspricht 81,58 EUR exkl. MwSt. / Monat",
     features: [
-      "Alle Leistungen aus FixMyRanking Pro - Silber",
+      "Alle Leistungen aus KundenRadar24 Pro - Silber",
       "Langfristiger Aufbau lokaler Autorität",
       "Stabilere Top-Positionen in Google Maps",
       "Laufende Anpassung an Wettbewerb & Markt",
@@ -150,9 +150,9 @@ const faqs = [
       "Erste Verbesserungen können - abhängig von Ausgangslage und Wettbewerb - häufig nach etwa 30 Tagen sichtbar werden.",
   },
   {
-    question: "Ist FixMyRanking Pro für jeden Standort sinnvoll?",
+    question: "Ist KundenRadar24 Pro für jeden Standort sinnvoll?",
     answer:
-      "FixMyRanking Pro eignet sich für alle lokal tätigen Unternehmen, die über Google Maps neue Kunden gewinnen möchten.",
+      "KundenRadar24 Pro eignet sich für alle lokal tätigen Unternehmen, die über Google Maps neue Kunden gewinnen möchten.",
   },
 ];
 
@@ -294,7 +294,7 @@ export function ProPage({
 
         <section className="mx-auto mb-16 w-full max-w-4xl px-6">
           <h2 className="mb-8 text-center text-2xl font-bold text-slate-900 md:text-3xl">
-            Was ist in FixMyRanking Pro enthalten?
+            Was ist in KundenRadar24 Pro enthalten?
           </h2>
           <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
             <ul className="grid gap-6 md:grid-cols-2">
@@ -323,7 +323,7 @@ export function ProPage({
 
         <section className="mx-auto mb-16 w-full max-w-4xl px-6">
           <h2 className="mb-8 text-center text-2xl font-bold text-slate-900 md:text-3xl">
-            Häufige Fragen zu FixMyRanking Pro
+            Häufige Fragen zu KundenRadar24 Pro
           </h2>
           <div className="space-y-3">
             {faqs.map((faq) => (

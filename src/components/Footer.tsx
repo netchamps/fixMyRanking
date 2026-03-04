@@ -9,7 +9,7 @@ export function Footer() {
           <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
             <MapPin className="h-4 w-4" />
           </span>
-          <span className="font-semibold">FixMyRanking</span>
+          <span className="font-semibold">KundenRadar24</span>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-4">
@@ -19,7 +19,7 @@ export function Footer() {
           <Link href="/agb" className="hover:text-slate-700 hover:underline">
             AGB
           </Link>
-          <p>© {new Date().getFullYear()} FixMyRanking. Alle Rechte vorbehalten.</p>
+          <p>© {new Date().getFullYear()} KundenRadar24. Alle Rechte vorbehalten.</p>
         </div>
       </div>
     </footer>
