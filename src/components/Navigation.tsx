@@ -1,5 +1,5 @@
+import Image from "next/image";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
 
 const navItems = [
   { href: "/#hero", label: "Start" },
@@ -14,10 +14,8 @@ export function Navigation() {
     <header className="fixed top-0 right-0 left-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
       <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-6">
         <Link href="/#hero" className="inline-flex items-center gap-2">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
-            <MapPin className="h-5 w-5" />
-          </span>
-          <span className="text-lg font-semibold text-slate-900">LocalRank Pro</span>
+          <Image src="/logo.png" alt="KundenRadar24" width={40} height={40} className="h-10 w-10 rounded-lg" />
+          <span className="text-lg font-semibold text-slate-900">KundenRadar24</span>
         </Link>
 
         <nav

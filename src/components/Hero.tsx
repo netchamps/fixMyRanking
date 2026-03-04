@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, MapPin, Search } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -31,11 +32,9 @@ export function Hero() {
       className="mx-auto w-full max-w-7xl scroll-mt-28 px-6 pt-10 pb-24">
       <div className="mb-10 text-center">
         <div className="mb-8 inline-flex items-center gap-2 rounded-full px-3 py-1.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600">
-            <MapPin className="h-4 w-4 text-white" />
-          </div>
+          <Image src="/logo.png" alt="KundenRadar24" width={32} height={32} className="h-8 w-8 rounded-lg" />
           <span className="text-xl font-semibold text-slate-900 md:text-2xl">
-            LocalRank Pro
+            KundenRadar24
           </span>
         </div>
       </div>

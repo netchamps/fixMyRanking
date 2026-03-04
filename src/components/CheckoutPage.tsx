@@ -512,8 +512,8 @@ export function CheckoutPage({
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-slate-700">
                   <Mail className="h-4 w-4 text-blue-600" />
-                  <a href="mailto:info@fixmyranking.de" className="hover:underline">
-                    info@fixmyranking.de
+                  <a href="mailto:info@kundenradar24.de" className="hover:underline">
+                    info@kundenradar24.de
                   </a>
                 </div>
                 <div className="flex items-center gap-2 text-slate-700">
@@ -717,8 +717,8 @@ function PackageSummary({
         </p>
         <p className="text-xs text-amber-800">
           Kündigung per E-Mail an{" "}
-          <a href="mailto:info@fixmyranking.de" className="underline">
-            info@fixmyranking.de
+          <a href="mailto:info@kundenradar24.de" className="underline">
+            info@kundenradar24.de
           </a>{" "}
           möglich.
         </p>
