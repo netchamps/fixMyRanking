@@ -30,15 +30,7 @@ export function Hero() {
     <section
       id="hero"
       className="mx-auto w-full max-w-7xl scroll-mt-28 px-6 pt-10 pb-24">
-      <div className="mb-10 text-center">
-        <div className="mb-8 inline-flex items-center gap-2 rounded-full px-3 py-1.5">
-          <Image src="/logo.png" alt="KundenRadar24" width={32} height={32} className="h-8 w-8 rounded-lg" />
-          <span className="text-xl font-semibold text-slate-900 md:text-2xl">
-            KundenRadar24
-          </span>
-        </div>
-      </div>
-
+      
       <div className="mx-auto mb-12 max-w-5xl text-center">
         <h1 className="mb-6 text-5xl leading-[1.1] font-bold text-slate-900 md:text-7xl">
           Mehr Sichtbarkeit bei Google Maps.
