@@ -13,6 +13,7 @@ const LOCAL_FALCON_TIMEOUT_MS = Number.isFinite(Number(process.env.LOCAL_FALCON_
   ? Math.max(30_000, Number(process.env.LOCAL_FALCON_TIMEOUT_MS))
   : 300_000;
 const COMPLETED_ON_DEMAND_SCAN_TTL_MS = 10 * 60 * 1000;
+const REPORT_DETAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const ENABLE_LOCAL_FALCON_DEBUG =
   process.env.LOCAL_FALCON_DEBUG_LOGS === "true" ||
   process.env.LOCAL_FALCON_DEBUG_LOGS === "1" ||
@@ -220,8 +221,13 @@ type CompletedOnDemandScanEntry = {
   storedAt: number;
   data: OnDemandScanResponse;
 };
+type CachedReportDetailEntry = {
+  storedAt: number;
+  data: ScanReportSummary;
+};
 const inFlightOnDemandScans = new Map<string, Promise<OnDemandScanResponse>>();
 const completedOnDemandScans = new Map<string, CompletedOnDemandScanEntry>();
+const reportDetailCache = new Map<string, CachedReportDetailEntry>();
 
 function maskApiKey(apiKey: string): string {
   if (apiKey.length <= 8) {
@@ -263,8 +269,83 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function toTrimmedString(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  return "";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function normalizeUrl(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+
+  if (trimmed.startsWith("http://")) {
+    return `https://${trimmed.slice("http://".length)}`;
+  }
+
+  return trimmed;
+}
+
+function toUrlString(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = normalizeUrl(value);
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const resolved = toUrlString(entry);
+      if (resolved) {
+        return resolved;
+      }
+    }
+    return null;
+  }
+
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const candidateKeys = ["url", "src", "href", "image", "heatmap", "before", "after"];
+
+  for (const key of candidateKeys) {
+    const resolved = toUrlString(value[key]);
+
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
 }
 
 function parsePayload(payload: unknown): AnalysisPayload | null {
@@ -401,7 +482,11 @@ async function runOrJoinOnDemandScan(
 
   const task = (async () => {
     const result = await runOnDemandScan(apiKey, payload, signal);
-    writeCompletedOnDemandScan(cacheKey, result);
+
+    if (!("pending" in result && result.pending === true)) {
+      writeCompletedOnDemandScan(cacheKey, result);
+    }
+
     return result;
   })();
 
@@ -518,6 +603,64 @@ async function postLocalFalcon<T>(
   return parsed;
 }
 
+function readCachedReportDetail(reportKey: string): ScanReportSummary | null {
+  const cacheKey = reportKey.trim();
+
+  if (!cacheKey) {
+    return null;
+  }
+
+  const cached = reportDetailCache.get(cacheKey);
+
+  if (!cached) {
+    return null;
+  }
+
+  if (Date.now() - cached.storedAt > REPORT_DETAIL_CACHE_TTL_MS) {
+    reportDetailCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.data;
+}
+
+function writeCachedReportDetail(reportKey: string, reportData: ScanReportSummary) {
+  const cacheKey = reportKey.trim();
+
+  if (!cacheKey) {
+    return;
+  }
+
+  reportDetailCache.set(cacheKey, {
+    storedAt: Date.now(),
+    data: reportData,
+  });
+}
+
+async function getReportDetail(
+  apiKey: string,
+  reportKey: string,
+  signal: AbortSignal,
+): Promise<ScanReportSummary> {
+  const cached = readCachedReportDetail(reportKey);
+
+  if (cached) {
+    return cached;
+  }
+
+  const response = await postLocalFalcon<ScanReportSummary>(
+    `/v1/reports/${reportKey}/`,
+    {
+      api_key: apiKey,
+      fields: REPORT_DETAIL_FIELDS,
+    },
+    signal,
+  );
+
+  writeCachedReportDetail(reportKey, response.data);
+  return response.data;
+}
+
 async function listReports(
   apiKey: string,
   body: Record<string, string>,
@@ -625,9 +768,9 @@ function selectBestOnDemandCandidate(
 ): OnDemandScanCandidate | null {
   const candidates = results
     .map((result) => {
-      const placeId = result.place_id?.trim() ?? "";
-      const name = result.name?.trim() ?? "";
-      const address = result.address?.trim() ?? "";
+      const placeId = toTrimmedString(result.place_id);
+      const name = toTrimmedString(result.name);
+      const address = toTrimmedString(result.address);
       const lat = toNumber(result.lat);
       const lng = toNumber(result.lng);
 
@@ -665,6 +808,201 @@ function selectBestOnDemandCandidate(
   return candidates[0] ?? null;
 }
 
+function looksLikeGooglePlaceId(placeId: string): boolean {
+  return /^ChI[0-9A-Za-z_-]{8,}$/.test(placeId.trim());
+}
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function calculateDistanceKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const earthRadiusKm = 6_371;
+  const dLat = toRadians(bLat - aLat);
+  const dLng = toRadians(bLng - aLng);
+  const lat1 = toRadians(aLat);
+  const lat2 = toRadians(bLat);
+
+  const haversine =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+  const arc = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+  return earthRadiusKm * arc;
+}
+
+function buildSelectedLocationSearchQueries(
+  payload: AnalysisPayload,
+  selectedLocation: NonNullable<AnalysisPayload["selectedLocation"]>,
+): LocationSearchQuery[] {
+  const queryTexts = [
+    `${selectedLocation.name} ${payload.location}`.trim(),
+    `${selectedLocation.name} ${selectedLocation.address}`.trim(),
+    selectedLocation.name.trim(),
+    payload.location.trim(),
+  ];
+  const dedupe = new Set<string>();
+  const queries: LocationSearchQuery[] = [];
+
+  for (const queryText of queryTexts) {
+    if (!queryText) {
+      continue;
+    }
+
+    for (const query of buildLocationSearchQueries(queryText)) {
+      const dedupeKey = `${normalizeText(query.name)}|${normalizeText(query.proximity ?? "")}`;
+
+      if (dedupe.has(dedupeKey)) {
+        continue;
+      }
+
+      dedupe.add(dedupeKey);
+      queries.push(query);
+    }
+  }
+
+  return queries;
+}
+
+function selectBestCandidateForSelectedLocation(
+  results: AccountLocationSearchResult[],
+  payload: AnalysisPayload,
+  selectedLocation: NonNullable<AnalysisPayload["selectedLocation"]>,
+): OnDemandScanCandidate | null {
+  const normalizedSelectedName = normalizeText(selectedLocation.name);
+  const normalizedSelectedAddress = normalizeText(selectedLocation.address || payload.location);
+  const candidates = results
+    .map((result) => {
+      const placeId = toTrimmedString(result.place_id);
+      const name = toTrimmedString(result.name);
+      const address = toTrimmedString(result.address);
+      const lat = toNumber(result.lat);
+      const lng = toNumber(result.lng);
+
+      if (!placeId || lat === null || lng === null) {
+        return null;
+      }
+
+      const nameScore = normalizedSelectedName
+        ? scoreTextMatch(name, selectedLocation.name)
+        : 0;
+      const addressScore = normalizedSelectedAddress
+        ? scoreTextMatch(address, selectedLocation.address || payload.location)
+        : 0;
+      const locationScore = scoreTextMatch(`${name} ${address}`, payload.location);
+      const keywordScore = scoreTextMatch(name, payload.keyword);
+      const distanceKm = calculateDistanceKm(selectedLocation.lat, selectedLocation.lng, lat, lng);
+
+      if (normalizedSelectedName && nameScore === 0) {
+        return null;
+      }
+
+      return {
+        placeId,
+        name: name || "Unbekanntes Profil",
+        address: address || "-",
+        lat,
+        lng,
+        rating: toNumber(result.rating),
+        reviews: toNumber(result.reviews),
+        phone: result.phone?.toString() ?? null,
+        website: result.url?.toString() ?? null,
+        keywordScore,
+        locationScore,
+        nameScore,
+        addressScore,
+        distanceKm,
+      };
+    })
+    .filter(
+      (
+        candidate,
+      ): candidate is OnDemandScanCandidate & {
+        nameScore: number;
+        addressScore: number;
+        distanceKm: number;
+      } => candidate !== null,
+    )
+    .sort((left, right) => {
+      if (right.nameScore !== left.nameScore) {
+        return right.nameScore - left.nameScore;
+      }
+
+      if (right.addressScore !== left.addressScore) {
+        return right.addressScore - left.addressScore;
+      }
+
+      if (right.locationScore !== left.locationScore) {
+        return right.locationScore - left.locationScore;
+      }
+
+      if (left.distanceKm !== right.distanceKm) {
+        return left.distanceKm - right.distanceKm;
+      }
+
+      return (right.reviews ?? 0) - (left.reviews ?? 0);
+    });
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const winner = candidates[0];
+
+  return {
+    placeId: winner.placeId,
+    name: winner.name,
+    address: winner.address,
+    lat: winner.lat,
+    lng: winner.lng,
+    rating: winner.rating,
+    reviews: winner.reviews,
+    phone: winner.phone,
+    website: winner.website,
+    keywordScore: winner.keywordScore,
+    locationScore: winner.locationScore,
+  };
+}
+
+async function resolveSelectedLocationCandidate(
+  apiKey: string,
+  payload: AnalysisPayload,
+  signal: AbortSignal,
+): Promise<OnDemandScanCandidate | null> {
+  if (!payload.selectedLocation) {
+    return null;
+  }
+
+  const selectedLocation = payload.selectedLocation;
+  const queries = buildSelectedLocationSearchQueries(payload, selectedLocation);
+  const combined = new Map<string, AccountLocationSearchResult>();
+
+  for (const query of queries) {
+    const queryResults = await searchAccountLocations(apiKey, query, signal);
+
+    for (const result of queryResults) {
+      const placeId = toTrimmedString(result.place_id);
+
+      if (!placeId || combined.has(placeId)) {
+        continue;
+      }
+
+      combined.set(placeId, result);
+    }
+
+    if (combined.size >= 24) {
+      break;
+    }
+  }
+
+  return selectBestCandidateForSelectedLocation(
+    Array.from(combined.values()),
+    payload,
+    selectedLocation,
+  );
+}
+
 async function resolveOnDemandScanCandidate(
   apiKey: string,
   payload: AnalysisPayload,
@@ -672,10 +1010,9 @@ async function resolveOnDemandScanCandidate(
 ): Promise<OnDemandScanCandidate> {
   if (payload.selectedLocation) {
     const selected = payload.selectedLocation;
-    const fallbackName = selected.name || "Ausgewaehltes Profil";
+    const fallbackName = selected.name || "Ausgewähltes Profil";
     const fallbackAddress = selected.address || payload.location;
-
-    return {
+    const fallbackCandidate: OnDemandScanCandidate = {
       placeId: selected.placeId,
       name: fallbackName,
       address: fallbackAddress,
@@ -688,6 +1025,28 @@ async function resolveOnDemandScanCandidate(
       keywordScore: scoreTextMatch(fallbackName, payload.keyword),
       locationScore: scoreTextMatch(`${fallbackName} ${fallbackAddress}`, payload.location),
     };
+
+    if (looksLikeGooglePlaceId(selected.placeId)) {
+      return fallbackCandidate;
+    }
+
+    const resolvedCandidate = await resolveSelectedLocationCandidate(
+      apiKey,
+      payload,
+      signal,
+    );
+
+    if (resolvedCandidate) {
+      debugLog("resolved non-google selected location to google place id", {
+        initialPlaceId: selected.placeId,
+        resolvedPlaceId: resolvedCandidate.placeId,
+        selectedName: selected.name,
+        resolvedName: resolvedCandidate.name,
+      });
+      return resolvedCandidate;
+    }
+
+    return fallbackCandidate;
   }
 
   const searchQueries = buildLocationSearchQueries(payload.location);
@@ -736,7 +1095,7 @@ async function resolveOnDemandScanCandidate(
 
   if (!selectedCandidate) {
     throw new RouteError(
-      `Kein passender Standort fuer "${payload.location}" gefunden. Bitte geben Sie den Firmennamen mit Stadt oder Adresse an.`,
+      `Kein passender Standort für "${payload.location}" gefunden. Bitte geben Sie den Firmennamen mit Stadt oder Adresse an.`,
       404,
     );
   }
@@ -814,10 +1173,20 @@ async function runOnDemandScan(
   );
 
   if (pointsFromArray.length === 0) {
-    throw new RouteError(
-      "Der neue Scan wurde gestartet, liefert aber noch keine Datenpunkte. Bitte in 1-2 Minuten erneut versuchen.",
-      502,
-    );
+    return {
+      success: true,
+      requiresSelection: false,
+      pending: true as const,
+      message:
+        "Der neue Scan wurde gestartet. Wir warten noch auf die ersten Datenpunkte und aktualisieren gleich automatisch.",
+      input: {
+        location: payload.location,
+        keyword: payload.keyword,
+      },
+      report: {
+        key: scanData.report_key ?? null,
+      },
+    };
   }
 
   const rankSummary = summarizeRanks(pointsFromArray);
@@ -839,12 +1208,14 @@ async function runOnDemandScan(
     },
     business: {
       placeId: candidate.placeId,
-      name: scanData.location?.name ?? candidate.name,
-      address: scanData.location?.address ?? candidate.address,
+      name: toTrimmedString(scanData.location?.name) || candidate.name,
+      address: toTrimmedString(scanData.location?.address) || candidate.address,
+      lat: toNumber(scanData.location?.lat) ?? candidate.lat,
+      lng: toNumber(scanData.location?.lng) ?? candidate.lng,
       rating: toNumber(scanData.location?.rating) ?? candidate.rating,
       reviews: toNumber(scanData.location?.reviews) ?? candidate.reviews,
-      phone: scanData.location?.phone?.toString() ?? candidate.phone,
-      website: scanData.location?.url ?? candidate.website,
+      phone: toTrimmedString(scanData.location?.phone) || candidate.phone,
+      website: toUrlString(scanData.location?.url) ?? candidate.website,
     },
     metrics: {
       points: pointsCount,
@@ -859,15 +1230,15 @@ async function runOnDemandScan(
       top10Rate,
     },
     maps: {
-      before: scanData.image ?? null,
-      heatmap: scanData.heatmap ?? null,
+      before: toUrlString(scanData.image),
+      heatmap: toUrlString(scanData.heatmap),
       afterDemo: "/assets/figma/after-ranking.png",
     },
     report: {
-      key: scanData.report_key ?? null,
-      publicUrl: scanData.public_url ?? null,
-      pdf: scanData.pdf ?? null,
-      date: scanData.date ?? null,
+      key: toTrimmedString(scanData.report_key) || null,
+      publicUrl: toUrlString(scanData.public_url),
+      pdf: toUrlString(scanData.pdf),
+      date: toTrimmedString(scanData.date) || null,
       timestamp: toNumber(scanData.timestamp) ?? timestamp,
     },
     selection: {
@@ -1106,6 +1477,8 @@ function buildAnalysisResponseFromReport(
     placeId: string;
     name: string;
     address: string;
+    lat: number | null;
+    lng: number | null;
     rating: number | null;
     reviews: number | null;
     phone: string | null;
@@ -1136,13 +1509,18 @@ function buildAnalysisResponseFromReport(
       keyword: payload.keyword,
     },
     business: {
-      placeId: reportData.location?.place_id ?? reportData.place_id ?? fallbackBusiness.placeId,
-      name: reportData.location?.name ?? fallbackBusiness.name,
-      address: reportData.location?.address ?? fallbackBusiness.address,
+      placeId:
+        toTrimmedString(reportData.location?.place_id) ||
+        toTrimmedString(reportData.place_id) ||
+        fallbackBusiness.placeId,
+      name: toTrimmedString(reportData.location?.name) || fallbackBusiness.name,
+      address: toTrimmedString(reportData.location?.address) || fallbackBusiness.address,
+      lat: toNumber(reportData.location?.lat) ?? toNumber(reportData.lat) ?? fallbackBusiness.lat,
+      lng: toNumber(reportData.location?.lng) ?? toNumber(reportData.lng) ?? fallbackBusiness.lng,
       rating: toNumber(reportData.location?.rating) ?? fallbackBusiness.rating,
       reviews: toNumber(reportData.location?.reviews) ?? fallbackBusiness.reviews,
-      phone: reportData.location?.phone?.toString() ?? fallbackBusiness.phone,
-      website: reportData.location?.url ?? fallbackBusiness.website,
+      phone: toTrimmedString(reportData.location?.phone) || fallbackBusiness.phone,
+      website: toUrlString(reportData.location?.url) ?? fallbackBusiness.website,
     },
     metrics: {
       points: pointsCount,
@@ -1157,15 +1535,15 @@ function buildAnalysisResponseFromReport(
       top10Rate,
     },
     maps: {
-      before: reportData.image ?? null,
-      heatmap: reportData.heatmap ?? null,
+      before: toUrlString(reportData.image),
+      heatmap: toUrlString(reportData.heatmap),
       afterDemo: "/assets/figma/after-ranking.png",
     },
     report: {
-      key: reportData.report_key ?? null,
-      publicUrl: reportData.public_url ?? null,
-      pdf: reportData.pdf ?? null,
-      date: reportData.date ?? null,
+      key: toTrimmedString(reportData.report_key) || null,
+      publicUrl: toUrlString(reportData.public_url),
+      pdf: toUrlString(reportData.pdf),
+      date: toTrimmedString(reportData.date) || null,
       timestamp: toNumber(reportData.timestamp) ?? null,
     },
     selection,
@@ -1238,19 +1616,18 @@ export async function POST(request: NextRequest) {
 
     if (parsedBody.selectedReportKey) {
       try {
-        const directReport = await postLocalFalcon<ScanReportSummary>(
-          `/v1/reports/${parsedBody.selectedReportKey}/`,
-          {
-            api_key: apiKey,
-            fields: REPORT_DETAIL_FIELDS,
-          },
+        const directReportData = await getReportDetail(
+          apiKey,
+          parsedBody.selectedReportKey,
           controller.signal,
         );
 
         const directBusinessFallback = {
           placeId: parsedBody.selectedLocation?.placeId ?? "",
-          name: parsedBody.selectedLocation?.name || "Ausgewaehltes Profil",
+          name: parsedBody.selectedLocation?.name || "Ausgewähltes Profil",
           address: parsedBody.selectedLocation?.address || parsedBody.location,
+          lat: parsedBody.selectedLocation?.lat ?? null,
+          lng: parsedBody.selectedLocation?.lng ?? null,
           rating: parsedBody.selectedLocation?.rating ?? null,
           reviews: parsedBody.selectedLocation?.reviews ?? null,
           phone: parsedBody.selectedLocation?.phone ?? null,
@@ -1260,13 +1637,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           buildAnalysisResponseFromReport(
             parsedBody,
-            directReport.data,
+            directReportData,
             directBusinessFallback,
             {
               matchType: parsedBody.selectedLocation ? "keyword_location" : "keyword",
-              keywordScore: scoreTextMatch(directReport.data.keyword ?? "", parsedBody.keyword),
+              keywordScore: scoreTextMatch(directReportData.keyword ?? "", parsedBody.keyword),
               locationScore: scoreTextMatch(
-                `${directReport.data.location?.name ?? ""} ${directReport.data.location?.address ?? ""}`,
+                `${directReportData.location?.name ?? ""} ${directReportData.location?.address ?? ""}`,
                 parsedBody.location,
               ),
               candidates: 1,
@@ -1297,8 +1674,8 @@ export async function POST(request: NextRequest) {
         requiresSelection: true,
         message:
           selection.status === "invalid_selection"
-            ? "Die Auswahl war nicht gueltig. Bitte waehlen Sie ein Profil erneut aus."
-            : "Mehrere passende Profile gefunden. Bitte waehlen Sie Ihr Unternehmen aus.",
+            ? "Die Auswahl war nicht gültig. Bitte wählen Sie ein Profil erneut aus."
+            : "Mehrere passende Profile gefunden. Bitte wählen Sie Ihr Unternehmen aus.",
         input: {
           location: parsedBody.location,
           keyword: parsedBody.keyword,
@@ -1307,20 +1684,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const report = await postLocalFalcon<ScanReportSummary>(
-      `/v1/reports/${selection.selected.reportKey}/`,
-      {
-        api_key: apiKey,
-        fields: REPORT_DETAIL_FIELDS,
-      },
+    const reportData = await getReportDetail(
+      apiKey,
+      selection.selected.reportKey,
       controller.signal,
     );
-
-    const reportData = report.data;
     const fallbackBusiness = {
       placeId: selection.selected.placeId,
       name: selection.selected.name,
       address: selection.selected.address,
+      lat: null,
+      lng: null,
       rating: null,
       reviews: null,
       phone: null,
@@ -1359,7 +1733,7 @@ export async function POST(request: NextRequest) {
         : error instanceof Error && error.message.toLowerCase().includes("aborted");
 
     const message = isAbortError
-      ? "Die Berichtsdaten brauchen laenger als erwartet. Bitte erneut versuchen."
+      ? "Die Berichtsdaten brauchen länger als erwartet. Bitte erneut versuchen."
       : error instanceof Error
         ? error.message
         : "Analyse konnte nicht geladen werden.";

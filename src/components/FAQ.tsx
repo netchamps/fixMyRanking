@@ -30,14 +30,14 @@ const faqData: FAQCategory[] = [
           "Nein. Die Analyse ist der erste Schritt. Der Fokus liegt auf der aktiven Optimierung Ihres Google Business Profils und relevanter lokaler Ranking-Signale.",
       },
       {
-        question: "Fur welche Unternehmen eignet sich KundenRadar24?",
+        question: "Für welche Unternehmen eignet sich KundenRadar24?",
         answer:
-          "KundenRadar24 eignet sich fuer lokal tätige Unternehmen, z.B. Handwerksbetriebe, Dienstleister, Praxen, Gastronomie und Einzelhandel.",
+          "KundenRadar24 eignet sich für lokal tätige Unternehmen, z.B. Handwerksbetriebe, Dienstleister, Praxen, Gastronomie und Einzelhandel.",
       },
       {
         question: "Was unterscheidet KundenRadar24 von klassischem SEO?",
         answer:
-          "KundenRadar24 konzentriert sich gezielt auf lokale Google-Maps-Rankings, also dort, wo lokale Kunden tatsachlich suchen.",
+          "KundenRadar24 konzentriert sich gezielt auf lokale Google-Maps-Rankings, also dort, wo lokale Kunden tatsächlich suchen.",
       },
     ],
   },
@@ -48,22 +48,22 @@ const faqData: FAQCategory[] = [
       {
         question: "Wie läuft der Prozess ab?",
         answer:
-          "Zuerst analysieren wir Ihre Google-Maps-Sichtbarkeit rund um Ihren Standort anhand realer Suchpunkte. Danach leiten wir konkrete Optimierungsmassnahmen ab und setzen diese um.",
+          "Zuerst analysieren wir Ihre Google-Maps-Sichtbarkeit rund um Ihren Standort anhand realer Suchpunkte. Danach leiten wir konkrete Optimierungsmaßnahmen ab und setzen diese um.",
       },
       {
         question: "Wann sind erste Ergebnisse sichtbar?",
         answer:
-          "Erste sichtbare Verbesserungen koennen, abhängig von Ausgangslage und Wettbewerb, häufig nach etwa 30 Tagen erkennbar werden.",
+          "Erste sichtbare Verbesserungen können, abhängig von Ausgangslage und Wettbewerb, häufig nach etwa 30 Tagen erkennbar werden.",
       },
       {
         question: "Sind Top-3-Rankings garantiert?",
         answer:
-          "Nein. Google-Rankings hangen von vielen Faktoren wie Wettbewerb, Standort und Marktumfeld ab. Wir arbeiten mit bewahrten Methoden, aber ohne starre Garantien.",
+          "Nein. Google-Rankings hängen von vielen Faktoren wie Wettbewerb, Standort und Marktumfeld ab. Wir arbeiten mit bewährten Methoden, aber ohne starre Garantien.",
       },
       {
         question: "Ist die Optimierung Google-konform?",
         answer:
-          "Ja. Alle Massnahmen erfolgen im Einklang mit den offiziellen Google-Vorgaben und setzen auf nachhaltige Optimierung.",
+          "Ja. Alle Maßnahmen erfolgen im Einklang mit den offiziellen Google-Vorgaben und setzen auf nachhaltige Optimierung.",
       },
     ],
   },
@@ -74,12 +74,12 @@ const faqData: FAQCategory[] = [
       {
         question: "Was bedeutet Bewertungsmanagement bei KundenRadar24?",
         answer:
-          "Wir unterstutzen Sie beim Umgang mit negativen Google-Bewertungen und ubernehmen die strukturierte Bearbeitung problematischer Eintrage.",
+          "Wir unterstützen Sie beim Umgang mit negativen Google-Bewertungen und übernehmen die strukturierte Bearbeitung problematischer Einträge.",
       },
       {
         question: "Brauche ich technische Vorkenntnisse?",
         answer:
-          "Nein. Sie mussen sich um keine technischen Details kummern. Analyse und Optimierung werden vollstandig ubernommen.",
+          "Nein. Sie müssen sich um keine technischen Details kümmern. Analyse und Optimierung werden vollständig übernommen.",
       },
       {
         question: "Wie starte ich mit KundenRadar24?",

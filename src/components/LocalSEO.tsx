@@ -3,11 +3,11 @@ import { BarChart3, CheckCircle2, MapPinned } from "lucide-react";
 const points = [
   {
     title: "Lokale Suchintention",
-    text: "Ein grosser Teil aller Suchanfragen hat lokalen Bezug. Genau dort setzen wir an.",
+    text: "Ein großer Teil aller Suchanfragen hat lokalen Bezug. Genau dort setzen wir an.",
   },
   {
     title: "Hohe Kaufbereitschaft",
-    text: "Nutzer auf Google Maps suchen meist nach einer direkten Losung in ihrer Nahe.",
+    text: "Nutzer auf Google Maps suchen meist nach einer direkten Lösung in ihrer Nähe.",
   },
   {
     title: "Messbare Entwicklung",
@@ -17,7 +17,7 @@ const points = [
 
 const steps = [
   "Ausgangsanalyse Ihrer Position in relevanten Suchgebieten",
-  "Priorisierung der wichtigsten Hebel fuer Ihr Profil",
+  "Priorisierung der wichtigsten Hebel für Ihr Profil",
   "Laufende Optimierung von Relevanz, Vertrauen und Sichtbarkeit",
   "Kontinuierliches Monitoring mit klarer Fortschrittsmessung",
 ];

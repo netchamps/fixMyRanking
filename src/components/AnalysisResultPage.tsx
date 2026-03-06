@@ -132,7 +132,7 @@ function StepProgress({ step, total, label }: StepProgressProps) {
       </div>
       <div className="mt-3 flex items-center justify-center gap-2 text-sm text-slate-500">
         <Check className="h-3.5 w-3.5 text-emerald-600" />
-        <span>Bereits ueber 500 lokale Unternehmen analysiert.</span>
+        <span>Bereits über 500 lokale Unternehmen analysiert.</span>
       </div>
       <p className="mt-1.5 text-xl font-medium text-emerald-600">
         100 % kostenlos. Keine Verpflichtung.
@@ -276,7 +276,7 @@ export function AnalysisResultPage({
           return [];
         });
         setBusinessSearchError(
-          "Keine passenden Standorte gefunden. Bitte Firmenname und Stadt pruefen.",
+          "Keine passenden Standorte gefunden. Bitte Firmenname und Stadt prüfen.",
         );
         return;
       }
@@ -338,7 +338,7 @@ export function AnalysisResultPage({
 
         let activeReportKey = requestedReportKey;
 
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        for (let attempt = 0; attempt < 6; attempt += 1) {
           const response = await fetch("/api/local-falcon/scan", {
             method: "POST",
             headers: {
@@ -363,6 +363,19 @@ export function AnalysisResultPage({
             return;
           }
 
+          if ("pending" in payload && payload.pending === true) {
+            const pendingReportKey = payload.report?.key?.trim();
+
+            if (pendingReportKey) {
+              activeReportKey = pendingReportKey;
+            }
+
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 2_500);
+            });
+            continue;
+          }
+
           if (payload.requiresSelection) {
             const autoMatch =
               business.placeId &&
@@ -376,6 +389,10 @@ export function AnalysisResultPage({
             }
 
             return;
+          }
+
+          if (!("business" in payload) || !("metrics" in payload) || !("maps" in payload)) {
+            continue;
           }
 
           storePreloadedResult(payload, business, activeReportKey, updateResolvedKey);
@@ -530,14 +547,14 @@ export function AnalysisResultPage({
 
         <main className="pb-16">
           <section className="mx-auto w-full max-w-5xl px-6 pt-28 pb-8 text-center">
-            <StepProgress step={1} total={2} label="Unternehmen auswaehlen" />
+            <StepProgress step={1} total={2} label="Unternehmen auswählen" />
           </section>
 
           <section className="mx-auto w-full max-w-4xl px-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-              <h1 className="text-3xl font-bold text-slate-900">Bitte Unternehmen auswaehlen</h1>
+              <h1 className="text-3xl font-bold text-slate-900">Bitte Unternehmen auswählen</h1>
               <p className="mt-2 text-slate-600">
-                Mehrere passende Profile gefunden. Bitte waehlen Sie Ihr Unternehmen aus.
+                Mehrere passende Profile gefunden. Bitte wählen Sie Ihr Unternehmen aus.
               </p>
 
               {isLoadingBusinesses && (
@@ -585,7 +602,7 @@ export function AnalysisResultPage({
                   {isLoadingBusinesses ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Suche laeuft...
+                      Suche läuft...
                     </>
                   ) : (
                     "Erneut suchen"
@@ -596,7 +613,7 @@ export function AnalysisResultPage({
                   href="/#hero"
                   className="inline-flex items-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
                 >
-                  Standort aendern
+                  Standort ändern
                 </Link>
               </div>
             </div>
@@ -704,7 +721,7 @@ export function AnalysisResultPage({
                     placeholder="+49 176 12345678"
                   />
                   <p className="mt-2 text-xs text-slate-500">
-                    Wir senden Ihnen Ihre Analyse zusaetzlich bequem per WhatsApp zu.
+                    Wir senden Ihnen Ihre Analyse zusätzlich bequem per WhatsApp zu.
                   </p>
                 </div>
 
@@ -721,7 +738,7 @@ export function AnalysisResultPage({
                   <span className="text-sm text-slate-600">
                     Ich stimme der{" "}
                     <a href="#" className="text-emerald-600 underline hover:text-emerald-700">
-                      Datenschutzerklaerung
+                      Datenschutzerklärung
                     </a>{" "}
                     zu.
                   </span>
@@ -825,7 +842,7 @@ export function AnalysisResultPage({
                       </div>
                     </div>
                     <p className="mt-4 text-sm text-slate-500">
-                      Wettbewerbsanalyse nach Freischaltung verfuegbar.
+                      Wettbewerbsanalyse nach Freischaltung verfügbar.
                     </p>
                   </div>
 
