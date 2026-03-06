@@ -34,6 +34,8 @@ export type AnalysisResult = {
     placeId: string;
     name: string;
     address: string;
+    lat: number | null;
+    lng: number | null;
     rating: number | null;
     reviews: number | null;
     phone: string | null;
@@ -76,7 +78,22 @@ export type AnalysisErrorPayload = {
   message?: string;
 };
 
+export type AnalysisPendingPayload = {
+  success: true;
+  requiresSelection: false;
+  pending: true;
+  message?: string;
+  input: {
+    location: string;
+    keyword: string;
+  };
+  report?: {
+    key?: string | null;
+  };
+};
+
 export type AnalysisApiResponse =
   | AnalysisResult
+  | AnalysisPendingPayload
   | AnalysisSelectionRequired
   | AnalysisErrorPayload;

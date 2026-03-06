@@ -29,7 +29,7 @@ export function RankingVisualization() {
           So verändert sich Ihre lokale Sichtbarkeit
         </h2>
         <p className="mx-auto max-w-3xl text-xl text-slate-600">
-          Rot markiert geringe Praesenz. Gruen zeigt stabile Ranking-Zonen im
+          Rot markiert geringe Präsenz. Grün zeigt stabile Ranking-Zonen im
           relevanten Umkreis.
         </p>
       </div>
@@ -94,7 +94,7 @@ export function RankingVisualization() {
         </div>
         <div className="rounded-xl border border-slate-100 bg-white p-6 text-center shadow-sm">
           <div className="mb-2 text-3xl font-bold text-emerald-600">+412%</div>
-          <div className="text-slate-600">Mehr Anfragen ueber Google Maps</div>
+          <div className="text-slate-600">Mehr Anfragen über Google Maps</div>
         </div>
         <div className="rounded-xl border border-slate-100 bg-white p-6 text-center shadow-sm">
           <div className="mb-2 text-3xl font-bold text-emerald-600">
@@ -109,7 +109,7 @@ export function RankingVisualization() {
       <div className="mt-8 text-center">
         <p className="mx-auto max-w-3xl text-xs leading-relaxed text-slate-500">
           Die dargestellten Kennzahlen basieren auf ausgewählten
-          Kundenprojekten. Ergebnisse koennen je nach Branche, Standort,
+          Kundenprojekten. Ergebnisse können je nach Branche, Standort,
           Wettbewerb und Ausgangssituation variieren. Verbesserungen erfolgen
           schrittweise und setzen kontinuierliche Optimierung voraus.
         </p>

@@ -2,7 +2,7 @@ import type { PreselectedLocation } from "@/types/preselected-location";
 import type { AnalysisResult } from "@/types/analysis-api";
 
 const CACHE_PREFIX = "analysis_result_v1:";
-const CACHE_TTL_MS = 15 * 60 * 1000;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const PRELOAD_PENDING_PREFIX = "analysis_preload_pending_v1:";
 const PRELOAD_PENDING_TTL_MS = 10 * 60 * 1000;
 const memoryAnalysisCache = new Map<string, CachedAnalysisEntry>();
@@ -15,6 +15,30 @@ type CachedAnalysisEntry = {
 
 function normalizeForCache(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function getPersistentStorage(): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function getSessionStorageSafe(): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 }
 
 export function buildAnalysisCacheKey(input: {
@@ -46,35 +70,44 @@ export function readCachedAnalysisResult(cacheKey: string): AnalysisResult | nul
     return null;
   }
 
-  try {
-    const raw = window.sessionStorage.getItem(cacheKey);
+  const storages = [getPersistentStorage(), getSessionStorageSafe()].filter(
+    (storage): storage is Storage => storage !== null,
+  );
 
-    if (!raw) {
-      return null;
+  for (const storage of storages) {
+    try {
+      const raw = storage.getItem(cacheKey);
+
+      if (!raw) {
+        continue;
+      }
+
+      const parsed = JSON.parse(raw) as CachedAnalysisEntry;
+
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        typeof parsed.storedAt !== "number" ||
+        typeof parsed.data !== "object" ||
+        parsed.data === null
+      ) {
+        storage.removeItem(cacheKey);
+        continue;
+      }
+
+      if (Date.now() - parsed.storedAt > CACHE_TTL_MS) {
+        storage.removeItem(cacheKey);
+        continue;
+      }
+
+      memoryAnalysisCache.set(cacheKey, parsed);
+      return parsed.data;
+    } catch {
+      // Ignore single-storage parse errors and try next storage.
     }
-
-    const parsed = JSON.parse(raw) as CachedAnalysisEntry;
-
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      typeof parsed.storedAt !== "number" ||
-      typeof parsed.data !== "object" ||
-      parsed.data === null
-    ) {
-      window.sessionStorage.removeItem(cacheKey);
-      return null;
-    }
-
-    if (Date.now() - parsed.storedAt > CACHE_TTL_MS) {
-      window.sessionStorage.removeItem(cacheKey);
-      return null;
-    }
-
-    return parsed.data;
-  } catch {
-    return null;
   }
+
+  return null;
 }
 
 export function writeCachedAnalysisResult(
@@ -92,23 +125,31 @@ export function writeCachedAnalysisResult(
     return;
   }
 
-  try {
-    window.sessionStorage.setItem(cacheKey, JSON.stringify(entry));
-  } catch {
-    // Ignore storage errors (e.g. Safari private mode quotas).
+  const storages = [getPersistentStorage(), getSessionStorageSafe()].filter(
+    (storage): storage is Storage => storage !== null,
+  );
+
+  for (const storage of storages) {
+    try {
+      storage.setItem(cacheKey, JSON.stringify(entry));
+    } catch {
+      // Ignore storage errors (e.g. Safari private mode quotas).
+    }
   }
 }
 
 export function markAnalysisPreloadPending(cacheKey: string) {
   memoryPendingCache.set(cacheKey, Date.now());
 
-  if (typeof window === "undefined") {
+  const sessionStorage = getSessionStorageSafe();
+
+  if (!sessionStorage) {
     return;
   }
 
   try {
     const pendingKey = `${PRELOAD_PENDING_PREFIX}${cacheKey}`;
-    window.sessionStorage.setItem(pendingKey, Date.now().toString());
+    sessionStorage.setItem(pendingKey, Date.now().toString());
   } catch {
     // Ignore storage errors.
   }
@@ -117,13 +158,15 @@ export function markAnalysisPreloadPending(cacheKey: string) {
 export function clearAnalysisPreloadPending(cacheKey: string) {
   memoryPendingCache.delete(cacheKey);
 
-  if (typeof window === "undefined") {
+  const sessionStorage = getSessionStorageSafe();
+
+  if (!sessionStorage) {
     return;
   }
 
   try {
     const pendingKey = `${PRELOAD_PENDING_PREFIX}${cacheKey}`;
-    window.sessionStorage.removeItem(pendingKey);
+    sessionStorage.removeItem(pendingKey);
   } catch {
     // Ignore storage errors.
   }
@@ -140,13 +183,15 @@ export function isAnalysisPreloadPending(cacheKey: string): boolean {
     memoryPendingCache.delete(cacheKey);
   }
 
-  if (typeof window === "undefined") {
+  const sessionStorage = getSessionStorageSafe();
+
+  if (!sessionStorage) {
     return false;
   }
 
   try {
     const pendingKey = `${PRELOAD_PENDING_PREFIX}${cacheKey}`;
-    const raw = window.sessionStorage.getItem(pendingKey);
+    const raw = sessionStorage.getItem(pendingKey);
 
     if (!raw) {
       return false;
@@ -155,12 +200,12 @@ export function isAnalysisPreloadPending(cacheKey: string): boolean {
     const timestamp = Number.parseInt(raw, 10);
 
     if (!Number.isFinite(timestamp)) {
-      window.sessionStorage.removeItem(pendingKey);
+      sessionStorage.removeItem(pendingKey);
       return false;
     }
 
     if (Date.now() - timestamp > PRELOAD_PENDING_TTL_MS) {
-      window.sessionStorage.removeItem(pendingKey);
+      sessionStorage.removeItem(pendingKey);
       return false;
     }
 

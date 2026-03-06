@@ -37,19 +37,19 @@ const features: Feature[] = [
     icon: Star,
     title: "Bewertungsmanagement",
     description:
-      "Wir unterstutzen Sie beim Umgang mit negativen Google-Bewertungen strukturiert und professionell.",
+      "Wir unterstützen Sie beim Umgang mit negativen Google-Bewertungen strukturiert und professionell.",
   },
   {
     icon: Shield,
     title: "Google-konform",
     description:
-      "Alle Massnahmen entsprechen den Google-Richtlinien fuer nachhaltige und sichere Rankings.",
+      "Alle Maßnahmen entsprechen den Google-Richtlinien für nachhaltige und sichere Rankings.",
   },
   {
     icon: Users,
     title: "Mehr Anfragen",
     description:
-      "Verbesserte Sichtbarkeit fuhrt zu mehr Klicks, Anrufen und qualifizierten Kundenanfragen.",
+      "Verbesserte Sichtbarkeit führt zu mehr Klicks, Anrufen und qualifizierten Kundenanfragen.",
   },
 ];
 
@@ -66,7 +66,7 @@ export function Features() {
           Analyse ist der Start. Optimierung bringt die Ergebnisse.
         </h2>
         <p className="mx-auto max-w-3xl text-xl text-slate-600">
-          Wir kombinieren prazise Datenanalyse mit aktiver Optimierung fuer
+          Wir kombinieren präzise Datenanalyse mit aktiver Optimierung für
           messbare Erfolge.
         </p>
       </div>

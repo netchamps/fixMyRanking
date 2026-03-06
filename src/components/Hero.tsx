@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, MapPin, Search } from "lucide-react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -39,7 +38,7 @@ export function Hero() {
         </h1>
         <p className="mb-12 text-2xl leading-relaxed text-slate-600">
           Transparente Analyse. Strukturierte Optimierung. Messbare lokale
-          Praesenz.
+          Präsenz.
         </p>
 
         <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">

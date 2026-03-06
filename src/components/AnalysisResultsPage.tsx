@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -40,6 +40,17 @@ type Segment = {
 };
 const PRELOAD_HANDOFF_WAIT_MS = 3_000;
 const PRELOAD_HANDOFF_POLL_MS = 250;
+const ANALYSIS_POLL_INTERVAL_MS = 4_000;
+const ANALYSIS_MAX_WAIT_MS = 8 * 60 * 1000;
+const LOADING_PROGRESS_TICK_MS = 900;
+const GERMAN_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("de-DE", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
 
 function formatMetric(value: number | null, suffix = "") {
   if (value === null) {
@@ -49,16 +60,119 @@ function formatMetric(value: number | null, suffix = "") {
   return `${value.toFixed(1)}${suffix}`;
 }
 
+function parseDateString(value: string): Date | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = new Date(trimmed);
+
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  const usDateTimePattern =
+    /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?)?$/;
+  const match = trimmed.match(usDateTimePattern);
+
+  if (!match) {
+    return null;
+  }
+
+  const month = Number.parseInt(match[1], 10);
+  const day = Number.parseInt(match[2], 10);
+  const yearRaw = Number.parseInt(match[3], 10);
+  const hourRaw = Number.parseInt(match[4] ?? "0", 10);
+  const minute = Number.parseInt(match[5] ?? "0", 10);
+  const meridiem = (match[6] ?? "").toLowerCase();
+  const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+
+  if (
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(year) ||
+    !Number.isFinite(hourRaw) ||
+    !Number.isFinite(minute)
+  ) {
+    return null;
+  }
+
+  let hour = hourRaw;
+
+  if (meridiem === "pm" && hour < 12) {
+    hour += 12;
+  } else if (meridiem === "am" && hour === 12) {
+    hour = 0;
+  }
+
+  const normalized = new Date(year, month - 1, day, hour, minute);
+
+  return Number.isNaN(normalized.getTime()) ? null : normalized;
+}
+
+function formatGermanDateTime(value: Date): string {
+  return GERMAN_DATE_TIME_FORMATTER.format(value);
+}
+
 function formatReportDate(date: string | null, timestamp: number | null) {
+  if (date) {
+    const parsedDate = parseDateString(date);
+
+    if (parsedDate) {
+      return formatGermanDateTime(parsedDate);
+    }
+  }
+
+  if (timestamp !== null) {
+    return formatGermanDateTime(new Date(timestamp * 1000));
+  }
+
   if (date) {
     return date;
   }
 
-  if (timestamp === null) {
+  return "-";
+}
+
+function formatNowGermanDateTime() {
+  if (typeof window === "undefined") {
     return "-";
   }
 
-  return new Date(timestamp * 1000).toLocaleDateString("de-DE");
+  return formatGermanDateTime(new Date());
+}
+
+function extractCityFromAddress(address: string | null | undefined): string | null {
+  if (!address) {
+    return null;
+  }
+
+  const trimmedAddress = address.trim();
+
+  if (!trimmedAddress || trimmedAddress === "-") {
+    return null;
+  }
+
+  const parts = trimmedAddress
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    const postalCityMatch = part.match(/\b\d{4,5}\s+(.+)$/);
+
+    if (postalCityMatch?.[1]) {
+      return postalCityMatch[1].trim();
+    }
+  }
+
+  if (parts.length >= 2) {
+    return parts[parts.length - 2];
+  }
+
+  return parts[0] ?? null;
 }
 
 function getMatchTypeLabel(matchType: AnalysisResult["selection"]["matchType"]) {
@@ -71,6 +185,47 @@ function getMatchTypeLabel(matchType: AnalysisResult["selection"]["matchType"]) 
     default:
       return "Keyword";
   }
+}
+
+function isPendingResponse(payload: AnalysisApiResponse | null, status: number): boolean {
+  if (!payload) {
+    return false;
+  }
+
+  if ("pending" in payload && payload.pending === true) {
+    return true;
+  }
+
+  if (status === 504) {
+    return true;
+  }
+
+  if (!("success" in payload) || payload.success !== false) {
+    return false;
+  }
+
+  const message = typeof payload.message === "string" ? payload.message.toLowerCase() : "";
+
+  return (
+    message.includes("gestartet") ||
+    message.includes("datenpunkte") ||
+    message.includes("erneut versuchen")
+  );
+}
+
+function isRenderableImageSource(value: string): boolean {
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed === "-") {
+    return false;
+  }
+
+  return (
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("data:image/")
+  );
 }
 
 function SegmentBars({ segments }: { segments: Segment[] }) {
@@ -94,7 +249,7 @@ function SegmentBars({ segments }: { segments: Segment[] }) {
   );
 }
 
-function LoadingState() {
+function LoadingState({ progress, status }: { progress: number; status: string }) {
   return (
     <section className="mx-auto mb-16 w-full max-w-5xl px-6">
       <div className="rounded-2xl border border-emerald-200 bg-gradient-to-b from-white to-emerald-50 p-10 text-center shadow-sm">
@@ -107,13 +262,22 @@ function LoadingState() {
           </div>
         </div>
 
-        <p className="text-lg font-semibold text-slate-900">Analyse wird erstellt ...</p>
+        <p className="text-lg font-semibold text-slate-900">Analyse wird erstellt …</p>
         <p className="mt-2 text-sm text-slate-600">
           Wir laden Ihre Local-Falcon-Daten und bereiten die Heatmap auf.
         </p>
-        <p className="mt-1 text-xs text-emerald-700">
-          Das dauert in der Regel nur wenige Sekunden.
-        </p>
+        <p className="mt-1 text-xs text-emerald-700">{status}</p>
+        <div className="mx-auto mt-5 w-full max-w-xl">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-emerald-100">
+            <div
+              className="h-full rounded-full bg-emerald-600 transition-all duration-500"
+              style={{ width: `${Math.max(8, Math.min(100, Math.round(progress)))}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs font-medium text-slate-600">
+            Fortschritt: {Math.max(8, Math.min(100, Math.round(progress)))} %
+          </p>
+        </div>
       </div>
 
       <style jsx>{`
@@ -221,7 +385,25 @@ export function AnalysisResultsPage({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorJson, setErrorJson] = useState<string | null>(null);
+  const [loadingProgress, setLoadingProgress] = useState(8);
+  const [loadingStatus, setLoadingStatus] = useState("Initialisierung läuft …");
+  const [heatmapCandidateIndex, setHeatmapCandidateIndex] = useState(0);
   const initialReportKey = selectedReportKey?.trim() || undefined;
+  const resolvedCity = useMemo(() => {
+    const cityFromResult = extractCityFromAddress(result?.business.address);
+
+    if (cityFromResult) {
+      return cityFromResult;
+    }
+
+    const cityFromSelectedLocation = extractCityFromAddress(selectedLocation?.address);
+
+    if (cityFromSelectedLocation) {
+      return cityFromSelectedLocation;
+    }
+
+    return location;
+  }, [location, result?.business.address, selectedLocation?.address]);
 
   const buildCacheKey = useCallback(
     (reportKey?: string) =>
@@ -246,11 +428,85 @@ export function AnalysisResultsPage({
     [buildCacheKey],
   );
 
+  const syncResultInUrl = useCallback(
+    (analysisResult: AnalysisResult, fallbackReportKey?: string) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      params.set("location", location);
+      params.set("keyword", keyword);
+
+      const resolvedReportKey =
+        analysisResult.report.key?.trim() || fallbackReportKey?.trim() || "";
+
+      if (resolvedReportKey) {
+        params.set("selectedReportKey", resolvedReportKey);
+      } else {
+        params.delete("selectedReportKey");
+      }
+
+      if (analysisResult.business.placeId) {
+        params.set("placeId", analysisResult.business.placeId);
+      } else {
+        params.delete("placeId");
+      }
+      params.set("businessName", analysisResult.business.name);
+      params.set("businessAddress", analysisResult.business.address);
+
+      if (analysisResult.business.rating !== null) {
+        params.set("businessRating", analysisResult.business.rating.toString());
+      } else {
+        params.delete("businessRating");
+      }
+
+      if (analysisResult.business.reviews !== null) {
+        params.set("businessReviews", analysisResult.business.reviews.toString());
+      } else {
+        params.delete("businessReviews");
+      }
+
+      if (analysisResult.business.phone) {
+        params.set("businessPhone", analysisResult.business.phone);
+      } else {
+        params.delete("businessPhone");
+      }
+
+      if (analysisResult.business.website) {
+        params.set("businessUrl", analysisResult.business.website);
+      } else {
+        params.delete("businessUrl");
+      }
+
+      const resolvedLat = selectedLocation?.lat ?? analysisResult.business.lat;
+      const resolvedLng = selectedLocation?.lng ?? analysisResult.business.lng;
+
+      if (resolvedLat !== null && Number.isFinite(resolvedLat)) {
+        params.set("lat", resolvedLat.toString());
+      } else {
+        params.delete("lat");
+      }
+
+      if (resolvedLng !== null && Number.isFinite(resolvedLng)) {
+        params.set("lng", resolvedLng.toString());
+      } else {
+        params.delete("lng");
+      }
+
+      const nextUrl = `/ergebnisse${params.size > 0 ? `?${params.toString()}` : ""}`;
+      window.history.replaceState(null, "", nextUrl);
+    },
+    [keyword, location, selectedLocation],
+  );
+
   const runAnalysis = useCallback(
     async (requestedReportKey?: string) => {
       setIsLoading(true);
       setError(null);
       setErrorJson(null);
+      setLoadingProgress(12);
+      setLoadingStatus("Bericht wird vorbereitet …");
 
       try {
         const cached =
@@ -261,12 +517,23 @@ export function AnalysisResultsPage({
           setResult(cached);
           setSelectionMatches([]);
           setSelectionMessage("");
+          syncResultInUrl(cached, requestedReportKey);
+          setLoadingProgress(100);
+          setLoadingStatus("Cache-Treffer gefunden");
           return;
         }
 
+        const startedAt = Date.now();
         let activeReportKey = requestedReportKey;
+        let pollAttempt = 0;
 
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        while (Date.now() - startedAt < ANALYSIS_MAX_WAIT_MS) {
+          setLoadingStatus(
+            pollAttempt === 0
+              ? "Daten werden von Local Falcon geladen …"
+              : "Scan läuft noch, wir aktualisieren automatisch …",
+          );
+
           const response = await fetch("/api/local-falcon/scan", {
             method: "POST",
             headers: {
@@ -304,6 +571,17 @@ export function AnalysisResultsPage({
                 ? payload.message
                 : "Analyse konnte nicht geladen werden.";
 
+            if (isPendingResponse(payload, response.status)) {
+              pollAttempt += 1;
+              setLoadingProgress((previous) =>
+                Math.min(96, Math.max(previous, 25 + pollAttempt * 8)),
+              );
+              await new Promise<void>((resolve) => {
+                setTimeout(resolve, ANALYSIS_POLL_INTERVAL_MS);
+              });
+              continue;
+            }
+
             const fallbackPayload = payload ?? { success: false, message };
             setError(message);
             setErrorJson(
@@ -317,6 +595,24 @@ export function AnalysisResultsPage({
               ),
             );
             return;
+          }
+
+          if ("pending" in payload && payload.pending === true) {
+            pollAttempt += 1;
+            const pendingReportKey = payload.report?.key?.trim();
+
+            if (pendingReportKey) {
+              activeReportKey = pendingReportKey;
+            }
+
+            setLoadingStatus(payload.message ?? "Scan läuft, wir aktualisieren gleich …");
+            setLoadingProgress((previous) =>
+              Math.min(96, Math.max(previous, 25 + pollAttempt * 8)),
+            );
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, ANALYSIS_POLL_INTERVAL_MS);
+            });
+            continue;
           }
 
           if (payload.requiresSelection === true) {
@@ -335,20 +631,31 @@ export function AnalysisResultsPage({
             setSelectionMatches(payload.matches);
             setSelectionMessage(
               payload.message ??
-                "Mehrere passende Profile gefunden. Bitte waehlen Sie Ihr Unternehmen aus.",
+                "Mehrere passende Profile gefunden. Bitte wählen Sie Ihr Unternehmen aus.",
             );
+            setLoadingProgress(100);
             return;
           }
 
+          if (!("business" in payload) || !("metrics" in payload) || !("maps" in payload)) {
+            pollAttempt += 1;
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, ANALYSIS_POLL_INTERVAL_MS);
+            });
+            continue;
+          }
+
           persistResultInCache(payload, activeReportKey);
+          syncResultInUrl(payload, activeReportKey);
           setResult(payload);
           setSelectionMatches([]);
           setSelectionMessage("");
+          setLoadingProgress(100);
+          setLoadingStatus("Bericht erfolgreich geladen");
           return;
         }
 
-        const message =
-          "Analyse konnte nicht automatisch dem ausgewaehlten Unternehmen zugeordnet werden.";
+        const message = "Die Analyse dauert länger als erwartet. Bitte in wenigen Sekunden erneut versuchen.";
         setError(message);
         setErrorJson(
           JSON.stringify(
@@ -386,6 +693,7 @@ export function AnalysisResultsPage({
       location,
       persistResultInCache,
       selectedLocation,
+      syncResultInUrl,
     ],
   );
 
@@ -410,6 +718,9 @@ export function AnalysisResultsPage({
         setResult(cachedInitial);
         setSelectionMatches([]);
         setSelectionMessage("");
+        syncResultInUrl(cachedInitial, initialReportKey);
+        setLoadingProgress(100);
+        setLoadingStatus("Cache-Treffer gefunden");
         setIsLoading(false);
         return true;
       }
@@ -431,6 +742,9 @@ export function AnalysisResultsPage({
           setResult(cached);
           setSelectionMatches([]);
           setSelectionMessage("");
+          syncResultInUrl(cached, initialReportKey);
+          setLoadingProgress(100);
+          setLoadingStatus("Vorgeladener Bericht übernommen");
           setIsLoading(false);
           return true;
         }
@@ -458,11 +772,25 @@ export function AnalysisResultsPage({
     return () => {
       isCancelled = true;
     };
-  }, [buildCacheKey, initialReportKey, keyword, location, runAnalysis]);
+  }, [buildCacheKey, initialReportKey, keyword, location, runAnalysis, syncResultInUrl]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setLoadingProgress((previous) => Math.min(94, previous + 1));
+    }, LOADING_PROGRESS_TICK_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isLoading]);
 
   const analysisDate = useMemo(() => {
     if (!result) {
-      return new Date().toLocaleDateString("de-DE");
+      return formatNowGermanDateTime();
     }
 
     return formatReportDate(result.report.date, result.report.timestamp);
@@ -486,6 +814,23 @@ export function AnalysisResultsPage({
 
     return `/pro${params.size > 0 ? `?${params.toString()}` : ""}`;
   }, [keyword, location, result]);
+
+  const heatmapCandidates = useMemo(() => {
+    const candidates = [
+      result?.maps.before,
+      result?.maps.heatmap,
+      "/assets/figma/before-ranking.png",
+    ].filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0 && isRenderableImageSource(value),
+    );
+
+    return Array.from(new Set(candidates));
+  }, [result?.maps.before, result?.maps.heatmap]);
+
+  useEffect(() => {
+    setHeatmapCandidateIndex(0);
+  }, [heatmapCandidates]);
 
   if (!location || !keyword) {
     return (
@@ -514,8 +859,9 @@ export function AnalysisResultsPage({
   const midRate = Math.max(0, top10Rate - top3Rate);
   const lowRate = Math.max(0, 100 - top10Rate);
 
-  const heatmapSource =
-    result?.maps.before ?? result?.maps.heatmap ?? "/assets/figma/before-ranking.png";
+  const activeHeatmapSource =
+    heatmapCandidates[Math.min(heatmapCandidateIndex, Math.max(0, heatmapCandidates.length - 1))] ??
+    "/assets/figma/before-ranking.png";
 
   const kpis = [
     {
@@ -524,7 +870,7 @@ export function AnalysisResultsPage({
       subtext:
         result && points > 0
           ? `${result.metrics.top3} von ${points} Datenpunkten liegen in den Top 3.`
-          : "Wird aus dem ausgewaehlten Report berechnet.",
+          : "Wird aus dem ausgewählten Report berechnet.",
       color: "text-red-600",
       bgColor: "bg-red-50",
       borderColor: "border-red-200",
@@ -535,7 +881,7 @@ export function AnalysisResultsPage({
       subtext:
         result && points > 0
           ? `${result.metrics.top10} von ${points} Datenpunkten sind in den Top 10 sichtbar.`
-          : "Wird aus dem ausgewaehlten Report berechnet.",
+          : "Wird aus dem ausgewählten Report berechnet.",
       color: "text-orange-600",
       bgColor: "bg-orange-50",
       borderColor: "border-orange-200",
@@ -546,7 +892,7 @@ export function AnalysisResultsPage({
       subtext:
         result && result.metrics.solv !== null
           ? `SoLV: ${formatMetric(result.metrics.solv, "%")} bei ${result.metrics.foundIn} gefundenen Punkten.`
-          : "Wird aus dem ausgewaehlten Report berechnet.",
+          : "Wird aus dem ausgewählten Report berechnet.",
       color: "text-slate-700",
       bgColor: "bg-slate-50",
       borderColor: "border-slate-200",
@@ -572,7 +918,7 @@ export function AnalysisResultsPage({
                 ? "Ihre Analyse wird geladen"
                 : error
                   ? "Analyse konnte nicht geladen werden"
-                  : `Ihre Analyse wurde erfolgreich durchgefuehrt am ${analysisDate}`}
+                  : `Ihre Analyse wurde erfolgreich durchgeführt am ${analysisDate}`}
             </p>
           </div>
 
@@ -581,10 +927,10 @@ export function AnalysisResultsPage({
           </h1>
 
           <p className="mb-12 text-center text-xl text-slate-600">
-            Analyse fuer &bdquo;{keyword}&ldquo; im Umkreis Ihres Standorts in {location}.
+            Analyse für &bdquo;{keyword}&ldquo; im Umkreis Ihres Standorts in {resolvedCity}.
           </p>
 
-          {isLoading && <LoadingState />}
+          {isLoading && <LoadingState progress={loadingProgress} status={loadingStatus} />}
 
           {!isLoading && error && (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center">
@@ -607,7 +953,7 @@ export function AnalysisResultsPage({
 
           {!isLoading && !error && !result && selectionMatches.length > 0 && (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-2xl font-bold text-slate-900">Bitte Unternehmen auswaehlen</h2>
+              <h2 className="text-2xl font-bold text-slate-900">Bitte Unternehmen auswählen</h2>
               <p className="mt-2 text-slate-600">{selectionMessage}</p>
               <div className="mt-6 grid gap-3">
                 {selectionMatches.map((match) => (
@@ -661,7 +1007,7 @@ export function AnalysisResultsPage({
                       Top-3-Ergebnissen.
                     </p>
                     <p className="text-base text-slate-600">
-                      Patienten entscheiden sich in diesen Bereichen haeufiger fuer Wettbewerber.
+                      Patienten entscheiden sich in diesen Bereichen häufiger für Wettbewerber.
                     </p>
                   </div>
                 </div>
@@ -669,10 +1015,19 @@ export function AnalysisResultsPage({
                 <div className="mb-6 rounded-xl bg-slate-50 p-4">
                   <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-slate-200">
                     <Image
-                      src={heatmapSource}
-                      alt="Local-Falcon Heatmap"
+                      key={activeHeatmapSource}
+                      src={activeHeatmapSource}
+                      alt="Local-Falcon-Heatmap"
                       fill
                       className="object-cover"
+                      priority
+                      unoptimized
+                      sizes="(max-width: 1024px) 100vw, 960px"
+                      onError={() => {
+                        setHeatmapCandidateIndex((previous) =>
+                          Math.min(previous + 1, Math.max(0, heatmapCandidates.length - 1)),
+                        );
+                      }}
                     />
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm text-slate-600">
@@ -692,7 +1047,7 @@ export function AnalysisResultsPage({
                 </div>
 
                 <p className="mb-2 text-center text-lg font-medium text-slate-700">
-                  Wenn Sie nicht unter den Top-3 erscheinen, werden Sie haeufig nicht angeklickt.
+                  Wenn Sie nicht unter den Top-3 erscheinen, werden Sie häufig nicht angeklickt.
                 </p>
               </div>
             </section>
@@ -764,18 +1119,18 @@ export function AnalysisResultsPage({
 
             <section className="mx-auto mb-16 w-full max-w-5xl px-6">
               <div className="rounded-2xl bg-emerald-600 p-10 text-white shadow-xl">
-                <h2 className="mb-2 text-center text-4xl font-bold">So ueberholen Sie Ihre Konkurrenz</h2>
+                <h2 className="mb-2 text-center text-4xl font-bold">So überholen Sie Ihre Konkurrenz</h2>
                 <p className="mb-8 text-center text-emerald-100">
                   Die Umsetzung erfolgt datenbasiert und kontinuierlich.
                 </p>
                 <div className="mx-auto grid max-w-3xl gap-4 md:grid-cols-2">
                   <div className="flex items-start gap-3">
                     <Check className="mt-0.5 h-6 w-6 shrink-0" />
-                    <span className="text-lg">Regionale Staerkung schwacher Gebiete</span>
+                    <span className="text-lg">Regionale Stärkung schwacher Gebiete</span>
                   </div>
                   <div className="flex items-start gap-3">
                     <Check className="mt-0.5 h-6 w-6 shrink-0" />
-                    <span className="text-lg">Strategische Ueberholung direkter Wettbewerber</span>
+                    <span className="text-lg">Strategische Überholung direkter Wettbewerber</span>
                   </div>
                   <div className="flex items-start gap-3">
                     <Check className="mt-0.5 h-6 w-6 shrink-0" />
@@ -796,17 +1151,17 @@ export function AnalysisResultsPage({
                 </p>
 
                 <h2 className="mb-4 text-4xl font-bold text-white md:text-5xl">
-                  Bereit, Ihre Konkurrenz in Google Maps zu ueberholen?
+                  Bereit, Ihre Konkurrenz in Google Maps zu überholen?
                 </h2>
                 <p className="mb-10 text-xl text-slate-300">
-                  Waehlen Sie das passende Optimierungs-Paket fuer Ihren Standort.
+                  Wählen Sie das passende Optimierungs-Paket für Ihren Standort.
                 </p>
 
                 <Link
                   href={proHref}
                   className="inline-flex transform items-center gap-3 rounded-xl bg-emerald-600 px-12 py-6 text-xl font-bold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:bg-emerald-700 hover:shadow-2xl hover:shadow-emerald-500/40"
                 >
-                  Jetzt Optimierungs-Paket auswaehlen
+                  Jetzt Optimierungs-Paket auswählen
                   <ArrowRight className="h-6 w-6" />
                 </Link>
 
@@ -814,7 +1169,7 @@ export function AnalysisResultsPage({
                   <p className="text-sm text-slate-400">Keine Vertragslaufzeit. Keine versteckten Kosten.</p>
                   <div className="flex items-center justify-center gap-2">
                     <Check className="h-4 w-4 text-emerald-400" />
-                    <p className="text-sm text-slate-400">Bereits ueber 500 Standorte erfolgreich optimiert.</p>
+                    <p className="text-sm text-slate-400">Bereits über 500 Standorte erfolgreich optimiert.</p>
                   </div>
                 </div>
 
