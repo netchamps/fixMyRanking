@@ -314,58 +314,48 @@ export function Hero() {
               }}
             >
               {/*
-                Line 1: "Mehr [word]"
-                Both anchored at the visual midpoint of the line.
-                "Mehr" right-edge = 50% − gap/2  →  never moves.
-                Word  left-edge  = 50% + gap/2  →  always starts at same X.
+                Line 1: "Mehr [word]" — left-aligned.
+                "Mehr" is always at position 0 (left edge of the block).
+                The word slot follows directly; only the slot width changes
+                when words swap, but "Mehr" never moves.
               */}
-              <span
-                style={{
-                  display: "block",
-                  position: "relative",
-                  height: "1.1em",
-                }}
-              >
-                {/* "Mehr" — pinned: right edge sits just left of centre */}
+              <span style={{ display: "block", textAlign: "left" }}>
                 <span
                   style={{
-                    position: "absolute",
-                    right: "calc(50% + 0.15em)",
-                    top: 0,
-                    whiteSpace: "nowrap",
+                    display: "inline-flex",
+                    alignItems: "baseline",
+                    gap: "0.25em",
                   }}
                 >
-                  Mehr
-                </span>
+                  <span style={{ flexShrink: 0 }}>Mehr</span>
 
-                {/* Word slot — pinned: left edge sits just right of centre */}
-                <span
-                  style={{
-                    position: "absolute",
-                    left: "calc(50% + 0.15em)",
-                    top: 0,
-                    display: "inline-block",
-                    overflow: "hidden",
-                    height: "1.15em",
-                  }}
-                >
+                  {/* Word slot — clips the vertical slide animation */}
                   <span
-                    key={wordIndex}
-                    className={
-                      phase === "exit"
-                        ? "word-exit"
-                        : phase === "enter"
-                          ? "word-enter"
-                          : ""
-                    }
                     style={{
                       display: "inline-block",
-                      color: "#1C7AE0",
-                      whiteSpace: "nowrap",
-                      transformOrigin: "center top",
+                      overflow: "hidden",
+                      height: "1.15em",
+                      verticalAlign: "bottom",
                     }}
                   >
-                    {ROTATING_WORDS[wordIndex]}
+                    <span
+                      key={wordIndex}
+                      className={
+                        phase === "exit"
+                          ? "word-exit"
+                          : phase === "enter"
+                            ? "word-enter"
+                            : ""
+                      }
+                      style={{
+                        display: "inline-block",
+                        color: "#1C7AE0",
+                        whiteSpace: "nowrap",
+                        transformOrigin: "center top",
+                      }}
+                    >
+                      {ROTATING_WORDS[wordIndex]}
+                    </span>
                   </span>
                 </span>
               </span>
