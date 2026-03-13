@@ -4,6 +4,21 @@ import { Check, MapPin, Search, Shield, Star, TrendingUp, Zap } from "lucide-rea
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+// Google brand colors — used only for headline letter accents
+const G_COLORS = ["#4285F4", "#EA4335", "#FBBC05", "#4285F4", "#34A853", "#EA4335"] as const;
+
+function GoogleWord() {
+  return (
+    <>
+      {"Google".split("").map((letter, i) => (
+        <span key={i} style={{ color: G_COLORS[i] }}>
+          {letter}
+        </span>
+      ))}
+    </>
+  );
+}
+
 export function Hero() {
   const router = useRouter();
   const [location, setLocation] = useState("");
@@ -45,20 +60,20 @@ export function Hero() {
         .hero-float-d { animation: float-d 5.8s ease-in-out infinite; }
         .hero-cta-primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 16px 48px rgba(16,185,129,0.45) !important;
+          box-shadow: 0 16px 48px rgba(28,122,224,0.45) !important;
         }
         .hero-cta-secondary:hover {
-          border-color: rgba(16,185,129,0.5) !important;
-          color: #10b981 !important;
+          border-color: rgba(28,122,224,0.45) !important;
+          color: #1C7AE0 !important;
         }
         .hero-input:focus {
-          border-color: #10b981 !important;
+          border-color: #1C7AE0 !important;
           background: #ffffff !important;
-          box-shadow: 0 0 0 3px rgba(16,185,129,0.08) !important;
+          box-shadow: 0 0 0 3px rgba(28,122,224,0.09) !important;
         }
         .hero-submit:not(:disabled):hover {
           transform: translateY(-1px);
-          box-shadow: 0 12px 32px rgba(16,185,129,0.45) !important;
+          box-shadow: 0 12px 32px rgba(28,122,224,0.45) !important;
         }
       `}</style>
 
@@ -67,10 +82,10 @@ export function Hero() {
         className="relative w-full scroll-mt-20"
         style={{
           background:
-            "linear-gradient(155deg, #f7fffe 0%, #f0fdf9 35%, #fafbff 65%, #f5f3ff 100%)",
+            "linear-gradient(155deg, #f8faff 0%, #f0f4ff 40%, #fafbff 70%, #f5f7ff 100%)",
         }}
       >
-        {/* Background glow orbs — clipped inside */}
+        {/* Background glow orbs */}
         <div
           className="pointer-events-none absolute inset-0 overflow-hidden"
           aria-hidden="true"
@@ -79,25 +94,25 @@ export function Hero() {
             style={{
               position: "absolute",
               top: "-15%",
-              left: "15%",
-              width: "700px",
-              height: "700px",
+              left: "10%",
+              width: "720px",
+              height: "720px",
               borderRadius: "50%",
               background:
-                "radial-gradient(circle, rgba(16,185,129,0.09) 0%, transparent 65%)",
-              filter: "blur(48px)",
+                "radial-gradient(circle, rgba(28,122,224,0.09) 0%, transparent 65%)",
+              filter: "blur(52px)",
             }}
           />
           <div
             style={{
               position: "absolute",
-              top: "10%",
+              top: "5%",
               right: "-8%",
               width: "560px",
               height: "560px",
               borderRadius: "50%",
               background:
-                "radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 65%)",
+                "radial-gradient(circle, rgba(66,133,244,0.08) 0%, transparent 65%)",
               filter: "blur(64px)",
             }}
           />
@@ -110,7 +125,7 @@ export function Hero() {
               height: "480px",
               borderRadius: "50%",
               background:
-                "radial-gradient(circle, rgba(20,184,166,0.08) 0%, transparent 65%)",
+                "radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 65%)",
               filter: "blur(56px)",
             }}
           />
@@ -126,11 +141,11 @@ export function Hero() {
                 gap: "8px",
                 padding: "7px 18px",
                 borderRadius: "999px",
-                background: "rgba(16,185,129,0.08)",
-                border: "1px solid rgba(16,185,129,0.22)",
+                background: "rgba(28,122,224,0.07)",
+                border: "1px solid rgba(28,122,224,0.2)",
                 fontSize: "13px",
                 fontWeight: 600,
-                color: "#059669",
+                color: "#1C7AE0",
                 letterSpacing: "0.01em",
               }}
             >
@@ -139,8 +154,8 @@ export function Hero() {
                   width: 7,
                   height: 7,
                   borderRadius: "50%",
-                  background: "#10b981",
-                  boxShadow: "0 0 8px rgba(16,185,129,0.7)",
+                  background: "#1C7AE0",
+                  boxShadow: "0 0 8px rgba(28,122,224,0.65)",
                   display: "inline-block",
                   flexShrink: 0,
                 }}
@@ -149,7 +164,7 @@ export function Hero() {
             </div>
           </div>
 
-          {/* Headline block — floating chips positioned here */}
+          {/* Headline block with floating chips */}
           <div className="relative mx-auto mb-8 max-w-4xl text-center">
             {/* Floating chip: top-left */}
             <div
@@ -171,7 +186,7 @@ export function Hero() {
                   width: 34,
                   height: 34,
                   borderRadius: "9px",
-                  background: "linear-gradient(135deg, #10b981, #0d9488)",
+                  background: "linear-gradient(135deg, #1C7AE0, #1351a8)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -205,7 +220,7 @@ export function Hero() {
                 whiteSpace: "nowrap",
               }}
             >
-              <Zap style={{ width: 15, height: 15, color: "#10b981", flexShrink: 0 }} />
+              <Zap style={{ width: 15, height: 15, color: "#1C7AE0", flexShrink: 0 }} />
               <span style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a" }}>
                 Analyse in Sekunden
               </span>
@@ -259,22 +274,16 @@ export function Hero() {
                 fontSize: "clamp(2.6rem, 6.5vw, 5.25rem)",
                 fontWeight: 800,
                 lineHeight: 1.06,
-                color: "#0f172a",
+                color: "#0d1b3e",
                 letterSpacing: "-0.03em",
                 margin: 0,
               }}
             >
               Mehr Sichtbarkeit auf
               <br />
-              <span
-                style={{
-                  color: "#10b981",
-                  display: "inline-block",
-                }}
-              >
-                Google&nbsp;Maps.
-              </span>{" "}
-              Mehr
+              <GoogleWord />
+              <span style={{ color: "#1C7AE0" }}>&nbsp;Maps.</span>
+              {" "}Mehr
               <br />
               Anfragen aus Ihrer Region.
             </h1>
@@ -291,7 +300,7 @@ export function Hero() {
             }}
           >
             Transparente Analyse. Strukturierte Optimierung.{" "}
-            <span style={{ color: "#334155", fontWeight: 600 }}>
+            <span style={{ color: "#1e293b", fontWeight: 600 }}>
               Messbare lokale Präsenz.
             </span>
           </p>
@@ -307,12 +316,12 @@ export function Hero() {
                 gap: "8px",
                 padding: "16px 32px",
                 borderRadius: "14px",
-                background: "linear-gradient(135deg, #10b981 0%, #0d9488 100%)",
+                background: "linear-gradient(135deg, #1C7AE0 0%, #1351a8 100%)",
                 color: "white",
                 fontWeight: 700,
                 fontSize: "0.9375rem",
                 textDecoration: "none",
-                boxShadow: "0 8px 32px rgba(16,185,129,0.32)",
+                boxShadow: "0 8px 32px rgba(28,122,224,0.32)",
                 transition: "all 0.22s ease",
                 whiteSpace: "nowrap",
               }}
@@ -361,7 +370,7 @@ export function Hero() {
                 style={{
                   fontSize: "1.2rem",
                   fontWeight: 700,
-                  color: "#0f172a",
+                  color: "#0d1b3e",
                   margin: "0 0 6px 0",
                   letterSpacing: "-0.01em",
                 }}
@@ -497,13 +506,13 @@ export function Hero() {
                   borderRadius: "12px",
                   border: "none",
                   background: canSubmit
-                    ? "linear-gradient(135deg, #10b981 0%, #0d9488 100%)"
+                    ? "linear-gradient(135deg, #1C7AE0 0%, #1351a8 100%)"
                     : "#f1f5f9",
                   color: canSubmit ? "white" : "#94a3b8",
                   fontWeight: 700,
                   fontSize: "0.9375rem",
                   cursor: canSubmit ? "pointer" : "not-allowed",
-                  boxShadow: canSubmit ? "0 8px 28px rgba(16,185,129,0.3)" : "none",
+                  boxShadow: canSubmit ? "0 8px 28px rgba(28,122,224,0.3)" : "none",
                   transition: "all 0.22s ease",
                   marginBottom: "16px",
                 }}
@@ -537,7 +546,7 @@ export function Hero() {
                     }}
                   >
                     <Check
-                      style={{ width: 13, height: 13, color: "#10b981", flexShrink: 0 }}
+                      style={{ width: 13, height: 13, color: "#1C7AE0", flexShrink: 0 }}
                     />
                     <span>{text}</span>
                   </div>
