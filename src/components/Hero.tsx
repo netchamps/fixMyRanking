@@ -313,23 +313,17 @@ export function Hero() {
                 margin: 0,
               }}
             >
-              {/* Line 1: "Mehr [rotating word]" — only these two words, always */}
+              {/* Line 1: "Mehr [rotating word]" — compact, no fixed-width holder */}
               <span style={{ display: "block" }}>
-                Mehr{" "}
                 <span
                   style={{
-                    display: "inline-block",
-                    position: "relative",
-                    verticalAlign: "bottom",
+                    display: "inline-flex",
+                    alignItems: "baseline",
+                    gap: "0.28em",
                     perspective: "600px",
                   }}
                 >
-                  {/* Invisible width-holder — widest word keeps the line stable */}
-                  <span style={{ visibility: "hidden", whiteSpace: "nowrap" }}>
-                    Sichtbarkeit
-                  </span>
-
-                  {/* Animated visible word */}
+                  <span>Mehr</span>
                   <span
                     key={wordIndex}
                     className={
@@ -340,11 +334,7 @@ export function Hero() {
                           : ""
                     }
                     style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      display: "inline-block",
                       color: "#1C7AE0",
                       whiteSpace: "nowrap",
                       transformOrigin: "center top",
