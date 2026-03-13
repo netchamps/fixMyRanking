@@ -313,13 +313,9 @@ export function Hero() {
                 margin: 0,
               }}
             >
-              {/* Line 1: "Mehr [rotating word] auf" */}
+              {/* Line 1: "Mehr [rotating word]" — only these two words, always */}
               <span style={{ display: "block" }}>
                 Mehr{" "}
-                {/*
-                  Width anchor: invisible span holding the widest word ("Sichtbarkeit")
-                  so the line never reflows during word changes.
-                */}
                 <span
                   style={{
                     display: "inline-block",
@@ -328,12 +324,12 @@ export function Hero() {
                     perspective: "600px",
                   }}
                 >
-                  {/* Invisible width-holder — always the longest word */}
+                  {/* Invisible width-holder — widest word keeps the line stable */}
                   <span style={{ visibility: "hidden", whiteSpace: "nowrap" }}>
                     Sichtbarkeit
                   </span>
 
-                  {/* Animated visible word — centred over the holder */}
+                  {/* Animated visible word */}
                   <span
                     key={wordIndex}
                     className={
@@ -357,16 +353,18 @@ export function Hero() {
                     {ROTATING_WORDS[wordIndex]}
                   </span>
                 </span>
-                {" "}auf
               </span>
 
-              {/* Line 2 */}
-              <GoogleWord />
-              <span style={{ color: "#1C7AE0" }}>&nbsp;Maps.</span>
-              {" "}Mehr
-              <br />
-              {/* Line 3 */}
-              Anfragen aus Ihrer Region.
+              {/* Line 2: "auf Google Maps." */}
+              <span style={{ display: "block" }}>
+                auf <GoogleWord />
+                <span style={{ color: "#1C7AE0" }}>&nbsp;Maps.</span>
+              </span>
+
+              {/* Line 3: "Mehr Anfragen aus Ihrer Region." */}
+              <span style={{ display: "block" }}>
+                Mehr Anfragen aus Ihrer Region.
+              </span>
             </h1>
           </div>
 
