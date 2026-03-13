@@ -100,12 +100,12 @@ export function Hero() {
 
         /* ── Rotating word ── */
         @keyframes word-exit {
-          0%   { opacity: 1; transform: translateY(0)     rotateX(0deg);   }
-          100% { opacity: 0; transform: translateY(-38%)  rotateX(16deg);  }
+          0%   { opacity: 1; transform: translateY(0)    rotateX(0deg);  }
+          100% { opacity: 0; transform: translateY(-115%) rotateX(12deg); }
         }
         @keyframes word-enter {
-          0%   { opacity: 0; transform: translateY(38%)   rotateX(-16deg); }
-          100% { opacity: 1; transform: translateY(0)     rotateX(0deg);   }
+          0%   { opacity: 0; transform: translateY(115%)  rotateX(-12deg); }
+          100% { opacity: 1; transform: translateY(0)    rotateX(0deg);  }
         }
         .word-exit  { animation: word-exit  0.32s cubic-bezier(0.4,0,0.2,1) forwards; }
         .word-enter { animation: word-enter 0.32s cubic-bezier(0.4,0,0.2,1) forwards; }
@@ -313,17 +313,42 @@ export function Hero() {
                 margin: 0,
               }}
             >
-              {/* Line 1: "Mehr [rotating word]" — compact, no fixed-width holder */}
-              <span style={{ display: "block" }}>
+              {/*
+                Line 1: "Mehr [word]"
+                Both anchored at the visual midpoint of the line.
+                "Mehr" right-edge = 50% − gap/2  →  never moves.
+                Word  left-edge  = 50% + gap/2  →  always starts at same X.
+              */}
+              <span
+                style={{
+                  display: "block",
+                  position: "relative",
+                  height: "1.1em",
+                }}
+              >
+                {/* "Mehr" — pinned: right edge sits just left of centre */}
                 <span
                   style={{
-                    display: "inline-flex",
-                    alignItems: "baseline",
-                    gap: "0.28em",
-                    perspective: "600px",
+                    position: "absolute",
+                    right: "calc(50% + 0.15em)",
+                    top: 0,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <span>Mehr</span>
+                  Mehr
+                </span>
+
+                {/* Word slot — pinned: left edge sits just right of centre */}
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "calc(50% + 0.15em)",
+                    top: 0,
+                    display: "inline-block",
+                    overflow: "hidden",
+                    height: "1.15em",
+                  }}
+                >
                   <span
                     key={wordIndex}
                     className={
