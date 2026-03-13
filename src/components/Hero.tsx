@@ -314,12 +314,13 @@ export function Hero() {
               }}
             >
               {/*
-                Line 1: "Mehr [word]" — left-aligned.
-                "Mehr" is always at position 0 (left edge of the block).
-                The word slot follows directly; only the slot width changes
-                when words swap, but "Mehr" never moves.
+                Line 1: "Mehr [word]" — visually centred, "Mehr" never moves.
+                The flex group has a CONSTANT total width because the word slot
+                has a fixed CSS width (7.2em ≈ "Sichtbarkeit" at this font).
+                justify-content: center → group is centred on the line.
+                Word is left-aligned inside the slot → gap to "Mehr" is always 0.25em.
               */}
-              <span style={{ display: "block", textAlign: "left" }}>
+              <span style={{ display: "flex", justifyContent: "center" }}>
                 <span
                   style={{
                     display: "inline-flex",
@@ -329,10 +330,12 @@ export function Hero() {
                 >
                   <span style={{ flexShrink: 0 }}>Mehr</span>
 
-                  {/* Word slot — clips the vertical slide animation */}
+                  {/* Fixed-width slot — clips the slide animation cleanly */}
                   <span
                     style={{
                       display: "inline-block",
+                      width: "7.2em",
+                      flexShrink: 0,
                       overflow: "hidden",
                       height: "1.15em",
                       verticalAlign: "bottom",
