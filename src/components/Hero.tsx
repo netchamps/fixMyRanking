@@ -2,7 +2,9 @@
 
 import { Check, MapPin, Search, Shield, Star, TrendingUp, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const ROTATING_WORDS = ["Sichtbarkeit", "Kunden", "Termine", "Leads"] as const;
 
 // Google brand colors — used only for headline letter accents
 const G_COLORS = ["#4285F4", "#EA4335", "#FBBC05", "#4285F4", "#34A853", "#EA4335"] as const;
@@ -23,6 +25,26 @@ export function Hero() {
   const router = useRouter();
   const [location, setLocation] = useState("");
   const [keyword, setKeyword] = useState("");
+
+  // Word rotation
+  const [wordIndex, setWordIndex] = useState(0);
+  const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle");
+
+  useEffect(() => {
+    const HOLD = 2800;   // ms each word is visible
+    const ANIM = 320;    // ms each half-animation (exit or enter)
+
+    const id = setInterval(() => {
+      setPhase("exit");
+      setTimeout(() => {
+        setWordIndex((i: number) => (i + 1) % ROTATING_WORDS.length);
+        setPhase("enter");
+        setTimeout(() => setPhase("idle"), ANIM);
+      }, ANIM);
+    }, HOLD);
+
+    return () => clearInterval(id);
+  }, []);
 
   const canSubmit = location.trim().length >= 3 && keyword.trim().length > 0;
 
@@ -75,6 +97,18 @@ export function Hero() {
           transform: translateY(-1px);
           box-shadow: 0 12px 32px rgba(28,122,224,0.45) !important;
         }
+
+        /* ── Rotating word ── */
+        @keyframes word-exit {
+          0%   { opacity: 1; transform: translateY(0)     rotateX(0deg);   }
+          100% { opacity: 0; transform: translateY(-38%)  rotateX(16deg);  }
+        }
+        @keyframes word-enter {
+          0%   { opacity: 0; transform: translateY(38%)   rotateX(-16deg); }
+          100% { opacity: 1; transform: translateY(0)     rotateX(0deg);   }
+        }
+        .word-exit  { animation: word-exit  0.32s cubic-bezier(0.4,0,0.2,1) forwards; }
+        .word-enter { animation: word-enter 0.32s cubic-bezier(0.4,0,0.2,1) forwards; }
       `}</style>
 
       <section
@@ -279,12 +313,59 @@ export function Hero() {
                 margin: 0,
               }}
             >
-              Mehr Sichtbarkeit auf
-              <br />
+              {/* Line 1: "Mehr [rotating word] auf" */}
+              <span style={{ display: "block" }}>
+                Mehr{" "}
+                {/*
+                  Width anchor: invisible span holding the widest word ("Sichtbarkeit")
+                  so the line never reflows during word changes.
+                */}
+                <span
+                  style={{
+                    display: "inline-block",
+                    position: "relative",
+                    verticalAlign: "bottom",
+                    perspective: "600px",
+                  }}
+                >
+                  {/* Invisible width-holder — always the longest word */}
+                  <span style={{ visibility: "hidden", whiteSpace: "nowrap" }}>
+                    Sichtbarkeit
+                  </span>
+
+                  {/* Animated visible word — centred over the holder */}
+                  <span
+                    key={wordIndex}
+                    className={
+                      phase === "exit"
+                        ? "word-exit"
+                        : phase === "enter"
+                          ? "word-enter"
+                          : ""
+                    }
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#1C7AE0",
+                      whiteSpace: "nowrap",
+                      transformOrigin: "center top",
+                    }}
+                  >
+                    {ROTATING_WORDS[wordIndex]}
+                  </span>
+                </span>
+                {" "}auf
+              </span>
+
+              {/* Line 2 */}
               <GoogleWord />
               <span style={{ color: "#1C7AE0" }}>&nbsp;Maps.</span>
               {" "}Mehr
               <br />
+              {/* Line 3 */}
               Anfragen aus Ihrer Region.
             </h1>
           </div>
