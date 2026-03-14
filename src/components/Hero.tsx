@@ -31,12 +31,12 @@ export function Hero() {
       id="hero"
       className="mx-auto w-full max-w-7xl scroll-mt-28 px-6 pt-10 pb-24"
     >
-      <div className="grid items-center gap-12 lg:grid-cols-2">
-        <div className="mx-auto mb-12 max-w-5xl text-center lg:mx-0 lg:mb-0 lg:text-left">
+      <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,760px)]">
+        <div className="mx-auto mb-12 max-w-5xl text-center lg:mx-0 lg:mb-0 lg:max-w-2xl lg:text-left">
           <h1 className="mb-6 text-5xl leading-[1.1] font-bold text-slate-900 md:text-7xl">
-          Mehr Sichtbarkeit bei Google Maps.
-          <br />
-          Mehr Anfragen aus Ihrer Region.
+            Mehr Sichtbarkeit bei Google Maps.
+            <br />
+            Mehr Anfragen aus Ihrer Region.
           </h1>
           <p className="mb-12 text-2xl leading-relaxed text-slate-600">
             Transparente Analyse. Strukturierte Optimierung. Messbare lokale
@@ -110,7 +110,7 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="flex justify-center lg:justify-end">
+        <div className="flex w-full justify-center lg:justify-end">
           <KundenRadarHeroCard />
         </div>
       </div>

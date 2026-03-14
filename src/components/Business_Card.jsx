@@ -1,3 +1,6 @@
+/* eslint-disable react/no-unknown-property */
+"use client";
+
 import { useState, useEffect } from "react";
 
 /* ─── Design Tokens (unchanged) ─── */
@@ -58,26 +61,30 @@ export default function KundenRadarHeroCard() {
   }, []);
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      /* [#1] Switched to Manrope — geometric, premium, modern SaaS sans-serif */
-      fontFamily: "'Manrope', 'Helvetica Neue', sans-serif",
-      background: "transparent",
-      padding: "60px 24px",
-      position: "relative",
-    }}>
-      {/* [#1] Replaced Instrument Serif with Manrope (all weights for headline + body) */}
-      <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <div
+      className="hero-card-embed"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "'Manrope', 'Helvetica Neue', sans-serif",
+        background: "transparent",
+        width: "100%",
+        position: "relative",
+      }}
+    >
 
       {/* ── Outer wrapper ── */}
-      <div style={{ position: "relative", width: "100%", maxWidth: 840 }}>
+      <div
+        className="hero-card-shell"
+        style={{ position: "relative", width: "100%", maxWidth: 760, padding: "34px 24px 42px" }}
+      >
 
         {/* ── Floating Chip: +47 Anrufe ── */}
         {/* [#3] Moved further right and up to reduce crowding near card top-right corner */}
-        <div style={{
+        <div
+          className="hero-card-float hero-card-float-top"
+          style={{
           position: "absolute",
           top: -32,
           right: 48,
@@ -92,7 +99,8 @@ export default function KundenRadarHeroCard() {
           opacity: show ? 1 : 0,
           transform: show ? "translateY(0) rotate(-1.5deg)" : "translateY(16px) rotate(-1.5deg)",
           transition: "all 0.7s cubic-bezier(0.16,1,0.3,1) 0.45s",
-        }}>
+        }}
+        >
           <div style={{
             width: 30, height: 30, borderRadius: 9,
             background: "rgba(34,197,94,0.09)",
@@ -107,7 +115,9 @@ export default function KundenRadarHeroCard() {
 
         {/* ── Floating Chip: +12 Plätze ── */}
         {/* [#6] Repositioned: overlaps card bottom-left edge instead of floating detached below */}
-        <div style={{
+        <div
+          className="hero-card-float hero-card-float-bottom"
+          style={{
           position: "absolute",
           bottom: -18,
           left: 44,
@@ -122,7 +132,8 @@ export default function KundenRadarHeroCard() {
           opacity: show ? 1 : 0,
           transform: show ? "translateY(0) rotate(0.8deg)" : "translateY(16px) rotate(0.8deg)",
           transition: "all 0.7s cubic-bezier(0.16,1,0.3,1) 0.6s",
-        }}>
+        }}
+        >
           <div style={{
             width: 30, height: 30, borderRadius: 9,
             background: BRAND_LIGHT,
@@ -137,6 +148,7 @@ export default function KundenRadarHeroCard() {
 
         {/* ══════ MAIN CARD ══════ */}
         <div
+          className="hero-card-main"
           onMouseEnter={() => setCardHov(true)}
           onMouseLeave={() => setCardHov(false)}
           style={{
@@ -157,14 +169,17 @@ export default function KundenRadarHeroCard() {
           }}
         >
           {/* ── LEFT CONTENT ── */}
-          <div style={{
+          <div
+            className="hero-card-content"
+            style={{
             flex: 1,
             padding: "44px 44px 36px 48px",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
             minHeight: 410,
-          }}>
+          }}
+          >
             {/* Top cluster */}
             <div>
               {/* Badge row */}
@@ -344,14 +359,17 @@ export default function KundenRadarHeroCard() {
 
           {/* ── RIGHT MAP PANEL ── */}
           {/* [#4] Added subtle depth layers: water feature, radius ring, more block variation */}
-          <div style={{
+          <div
+            className="hero-card-map"
+            style={{
             width: 280,
             position: "relative",
             overflow: "hidden",
             flexShrink: 0,
             background: "linear-gradient(155deg, #EDF2F8 0%, #E1E9F3 50%, #DAE3EF 100%)",
             borderLeft: "1px solid rgba(10,22,40,0.04)",
-          }}>
+          }}
+          >
             <svg
               viewBox="0 0 280 450"
               preserveAspectRatio="xMidYMid slice"
@@ -501,7 +519,7 @@ export default function KundenRadarHeroCard() {
         </div>
       </div>
 
-      <style>{`
+      <style jsx>{`
         @keyframes kr-pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.4; transform: scale(1.5); }
@@ -510,7 +528,47 @@ export default function KundenRadarHeroCard() {
           0% { r: 10; opacity: 1; }
           100% { r: 36; opacity: 0; }
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        .hero-card-embed {
+          box-sizing: border-box;
+        }
+
+        .hero-card-embed :global(*) {
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 767px) {
+          .hero-card-shell {
+            max-width: 100%;
+            padding: 26px 8px 32px;
+          }
+
+          .hero-card-main {
+            flex-direction: column;
+          }
+
+          .hero-card-content {
+            min-height: auto !important;
+            padding: 28px 24px !important;
+          }
+
+          .hero-card-map {
+            width: 100% !important;
+            min-height: 320px;
+            border-left: none !important;
+            border-top: 1px solid rgba(10,22,40,0.04);
+          }
+
+          .hero-card-float-top {
+            top: -12px !important;
+            right: 20px !important;
+          }
+
+          .hero-card-float-bottom {
+            bottom: 12px !important;
+            left: 20px !important;
+          }
+        }
       `}</style>
     </div>
   );
