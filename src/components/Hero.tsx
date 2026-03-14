@@ -43,7 +43,7 @@ export function Hero() {
             Präsenz.
           </p>
 
-          <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm lg:mx-0">
+          <div className="mx-auto w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm lg:mx-0 lg:max-w-none">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="relative">
