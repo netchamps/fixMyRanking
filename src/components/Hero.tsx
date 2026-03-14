@@ -42,7 +42,7 @@ export function Hero() {
       <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">
 
         {/* Left column — original hero content, left-aligned */}
-        <div>
+        <div className="min-w-0">
           <h1 className="mb-6 text-4xl leading-[1.1] font-bold text-slate-900 md:text-5xl lg:text-6xl">
             Mehr Sichtbarkeit bei Google Maps.
             <br />
@@ -121,7 +121,7 @@ export function Hero() {
         </div>
 
         {/* Right column — Business_Card */}
-        <div className="hero-card-slot hidden lg:flex items-center justify-center">
+        <div className="hero-card-slot hidden min-w-0 overflow-hidden lg:flex lg:items-center lg:justify-center">
           <KundenRadarHeroCard />
         </div>
 
